@@ -3,7 +3,6 @@
 import os
 import time
 import re
-from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Callable
 from loguru import logger
 from replicate.prediction import Prediction
@@ -14,7 +13,7 @@ from ..utils.verbose_output import log_stage_emoji, show_error_with_retry
 from ..utils.timeouts import create_video_timeout
 
 
-class BaseAsyncReplicateClient(ABC):
+class BaseAsyncReplicateClient:
     """Base class with shared async client methods."""
 
     def __init__(self, config: APIClientConfig):
@@ -173,16 +172,13 @@ class BaseAsyncReplicateClient(ABC):
         logger.error(f"Could not extract URL from output: {output}")
         return None
 
-    @abstractmethod
     def _poll_prediction(
         self,
         prediction: Prediction,
         progress_callback: Optional[Callable[[str, Optional[float]], None]] = None,
     ) -> Optional[str]:
         """
-        Poll prediction status until completion.
-
-        Override in subclasses for different polling strategies.
+        Poll prediction status until completion (concrete base implementation).
 
         Args:
             prediction: The prediction to poll
@@ -191,4 +187,41 @@ class BaseAsyncReplicateClient(ABC):
         Returns:
             Output URL if successful
         """
-        pass
+        start_time = time.time()
+        last_status = None
+        last_progress = None
+
+        while True:
+            if time.time() - start_time > self.max_wait_time:
+                logger.error(f"Timeout: Prediction {prediction.id} took too long")
+                return None
+
+            try:
+                prediction.reload()
+            except Exception as e:
+                logger.error(f"Failed to reload prediction: {e}")
+                return None
+
+            if prediction.status != last_status:
+                self._log_status_change(prediction.status, last_status)
+                last_status = prediction.status
+
+            progress_pct = self._extract_progress(prediction)
+            if progress_pct != last_progress:
+                if progress_pct is not None:
+                    logger.info(f"Processing: {progress_pct:.0f}% complete")
+                last_progress = progress_pct
+
+            if progress_callback:
+                progress_callback(prediction.status, progress_pct)
+
+            if prediction.status == "succeeded":
+                return self._extract_output_url(prediction)
+            elif prediction.status == "failed":
+                logger.error(f"Prediction failed: {prediction.error}")
+                return None
+            elif prediction.status == "canceled":
+                logger.warning("Prediction was canceled")
+                return None
+
+            time.sleep(self.poll_interval)

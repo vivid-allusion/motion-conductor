@@ -37,3 +37,28 @@ class APIError(VideoGenerationError):
     pass
 
 
+def handle_main_exception(e: Exception, log_error, log_exception) -> int:
+    """
+    Handle exceptions from main() with appropriate logging and exit codes.
+
+    Returns exit code: 130=interrupt, 2=auth, 3=input, 4=generation, 1=general.
+    """
+    if isinstance(e, KeyboardInterrupt):
+        log_error("Interrupted by user")
+        return 130
+    elif isinstance(e, AuthenticationError):
+        log_error(f"Authentication failed: {e}")
+        return 2
+    elif isinstance(e, InputValidationError):
+        log_error(f"Input validation failed: {e}")
+        return 3
+    elif isinstance(e, VideoGenerationError):
+        log_error(f"Video generation error: {e}")
+        log_exception("Full traceback:")
+        return 4
+    else:
+        log_error(f"Fatal error: {e}")
+        log_exception("Full traceback:")
+        return 1
+
+

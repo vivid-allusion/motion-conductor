@@ -3,7 +3,6 @@
 from pathlib import Path
 from loguru import logger
 import sys
-import os
 
 
 def _sanitize_for_filename(name: str) -> str:

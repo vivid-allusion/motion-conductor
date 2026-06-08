@@ -2,7 +2,6 @@
 
 import sys
 from loguru import logger
-from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 from .utils.epic_progress import ProgressBar
@@ -18,7 +17,7 @@ from .output.reporter import create_success_report, create_cost_report
 from .utils.logging import setup_logging
 from .utils.cleanup import archive_and_cleanup_logs
 from .validation.environment import validate_environment, validate_input_directories
-from .exceptions import VideoGenerationError, AuthenticationError, InputValidationError
+from .exceptions import handle_main_exception
 from .utils.verbose_output import show_project_header
 
 
@@ -97,19 +96,12 @@ def main() -> int:
     except KeyboardInterrupt:
         logger.warning("Interrupted by user")
         return 130
-    except AuthenticationError as e:
-        logger.error(f"Authentication failed: {e}")
-        return 2
-    except InputValidationError as e:
-        logger.error(f"Input validation failed: {e}")
-        return 3
-    except VideoGenerationError as e:
-        logger.error(f"Video generation error: {e}")
-        return 4
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
-        logger.exception("Full traceback:")
-        return 1
+        return handle_main_exception(
+            e,
+            log_error=logger.error,
+            log_exception=logger.exception,
+        )
 
 
 if __name__ == "__main__":

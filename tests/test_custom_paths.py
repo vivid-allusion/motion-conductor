@@ -3,7 +3,6 @@
 import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import yaml
 
 from src.processing.profile_loader import load_single_profile
 

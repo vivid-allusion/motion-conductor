@@ -17,33 +17,10 @@ def find_yaml_files(profiles_dir: Path) -> List[Path]:
     return yaml_files
 
 
-def load_single_profile(yaml_file: Path) -> Dict[str, Any]:
-    """Load and validate a single profile from YAML file."""
-    with open(yaml_file, "r") as f:
-        profile_data = yaml.safe_load(f) or {}
-
-    profile_name = yaml_file.stem
-    validator = ProfileValidator()
-
-    # Validate all sections
-    model_section = validator.validate_model_section(profile_data, yaml_file)
-    pricing = validator.validate_pricing_section(profile_data, yaml_file)
-    duration_config = validator.validate_duration_section(profile_data, yaml_file)
-    params = validator.validate_params_section(profile_data, yaml_file)
-
-    # Extract optional image_url parameter name (defaults to "image")
-    image_url_param = profile_data.get("image_url", "image")
-
-    # Support generate_audio at root level (legacy/convenience support)
-    if "generate_audio" in profile_data:
-        params["generate_audio"] = profile_data["generate_audio"]
-
-    # Validate and extract optional prompt modifications
-    prompt_prefix, prompt_suffix = validator.validate_prompt_modifications(
-        profile_data, yaml_file
-    )
-
-    # Extract optional project configuration (project name and custom paths)
+def _extract_project_config(
+    profile_data: Dict[str, Any],
+) -> tuple[str | None, Path | None, Path | None]:
+    """Extract optional project name and custom paths from profile data."""
     project_name = None
     custom_input_path = None
     custom_output_path = None
@@ -63,7 +40,63 @@ def load_single_profile(yaml_file: Path) -> Dict[str, Any]:
             if "output" in paths_config:
                 custom_output_path = Path(paths_config["output"])
 
-    # Build profile dictionary
+    return project_name, custom_input_path, custom_output_path
+
+
+def _log_profile_config(
+    profile_name: str,
+    endpoint: str,
+    prompt_prefix: str | None,
+    prompt_suffix: str | None,
+    project_name: str | None,
+    custom_input_path: Path | None,
+    custom_output_path: Path | None,
+) -> None:
+    """Log profile configuration details."""
+    logger.info(f"Loaded profile: {profile_name} (endpoint: {endpoint})")
+
+    modifications = []
+    if prompt_prefix and prompt_prefix.strip():
+        modifications.append(f"prefix='{prompt_prefix.strip()}'")
+    if prompt_suffix and prompt_suffix.strip():
+        modifications.append(f"suffix='{prompt_suffix.strip()}'")
+    if modifications:
+        logger.info(f"  → Prompt modifications: {', '.join(modifications)}")
+
+    if project_name:
+        logger.info(f"  → Project: {project_name}")
+    if custom_input_path:
+        logger.info(f"  → Custom input: {custom_input_path}")
+    if custom_output_path:
+        logger.info(f"  → Custom output: {custom_output_path}")
+
+
+def load_single_profile(yaml_file: Path) -> Dict[str, Any]:
+    """Load and validate a single profile from YAML file."""
+    with open(yaml_file, "r") as f:
+        profile_data = yaml.safe_load(f) or {}
+
+    profile_name = yaml_file.stem
+    validator = ProfileValidator()
+
+    model_section = validator.validate_model_section(profile_data, yaml_file)
+    pricing = validator.validate_pricing_section(profile_data, yaml_file)
+    duration_config = validator.validate_duration_section(profile_data, yaml_file)
+    params = validator.validate_params_section(profile_data, yaml_file)
+
+    image_url_param = profile_data.get("image_url", "image")
+
+    if "generate_audio" in profile_data:
+        params["generate_audio"] = profile_data["generate_audio"]
+
+    prompt_prefix, prompt_suffix = validator.validate_prompt_modifications(
+        profile_data, yaml_file
+    )
+
+    project_name, custom_input_path, custom_output_path = _extract_project_config(
+        profile_data
+    )
+
     profile = {
         "name": profile_name,
         "model_id": model_section["endpoint"],
@@ -79,28 +112,15 @@ def load_single_profile(yaml_file: Path) -> Dict[str, Any]:
         "custom_output_path": str(custom_output_path) if custom_output_path else None,
     }
 
-    # Log profile loading with prompt modifications if configured
-    logger.info(
-        f"Loaded profile: {profile_name} (endpoint: {model_section['endpoint']})"
+    _log_profile_config(
+        profile_name,
+        model_section["endpoint"],
+        prompt_prefix,
+        prompt_suffix,
+        project_name,
+        custom_input_path,
+        custom_output_path,
     )
-
-    # Log prompt modifications if any are configured
-    modifications = []
-    if prompt_prefix and prompt_prefix.strip():
-        modifications.append(f"prefix='{prompt_prefix.strip()}'")
-    if prompt_suffix and prompt_suffix.strip():
-        modifications.append(f"suffix='{prompt_suffix.strip()}'")
-
-    if modifications:
-        logger.info(f"  → Prompt modifications: {', '.join(modifications)}")
-
-    # Log project configuration if configured
-    if project_name:
-        logger.info(f"  → Project: {project_name}")
-    if custom_input_path:
-        logger.info(f"  → Custom input: {custom_input_path}")
-    if custom_output_path:
-        logger.info(f"  → Custom output: {custom_output_path}")
 
     return profile
 

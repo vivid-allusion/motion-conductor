@@ -1,16 +1,17 @@
 """Hybrid progress implementation using alive-progress with loguru for logging."""
 
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable
 from contextlib import contextmanager
 from loguru import logger
 
+from .verbose_output import API_STATUS_EMOJI
+
 try:
-    from alive_progress import alive_bar, config_handler
+    from alive_progress import alive_bar
 
     ALIVE_PROGRESS_AVAILABLE = True
 except ImportError:
     ALIVE_PROGRESS_AVAILABLE = False
-    config_handler = None
 
     def alive_bar(*args, **kwargs):
         class DummyBar:
@@ -132,15 +133,7 @@ class HybridVideoProgress:
             status: API status
             percentage: Optional percentage complete
         """
-        status_emoji = {
-            "starting": "🚀",
-            "queued": "⏳",
-            "processing": "⚙️",
-            "succeeded": "✅",
-            "failed": "❌",
-        }
-
-        emoji = status_emoji.get(status.lower(), "▶️")
+        emoji = API_STATUS_EMOJI.get(status.lower(), "▶️")
 
         if percentage is not None:
             logger.info(f"  {emoji} API: {status.title()} ({percentage:.0f}%)")
@@ -228,44 +221,3 @@ def create_hybrid_api_callback(
             hybrid.update_video_status(hybrid.current_video, "Generating", details)
 
     return callback
-
-
-if __name__ == "__main__":
-    from time import sleep
-
-    videos = [
-        {"name": "video01", "cost": 0.15},
-        {"name": "video02", "cost": 0.12},
-        {"name": "video03", "cost": 0.18},
-    ]
-
-    hybrid = HybridVideoProgress()
-
-    with hybrid.track_generation(len(videos), "Example Generation") as bar:
-        for video in videos:
-            hybrid.update_video_status(
-                video["name"], "Initializing", "Setting up context"
-            )
-            sleep(0.5)
-
-            hybrid.log_phase_start("Preparing", "Building API parameters")
-            sleep(0.5)
-
-            hybrid.update_video_status(
-                video["name"], "Generating", "Sending API request"
-            )
-
-            hybrid.log_api_status("starting")
-            sleep(0.5)
-            hybrid.log_api_status("processing", 50)
-            sleep(0.5)
-            hybrid.log_api_status("processing", 85)
-            sleep(0.5)
-            hybrid.log_api_status("succeeded", 100)
-
-            hybrid.log_phase_start("Downloading", "Fetching generated video")
-            sleep(0.5)
-
-            hybrid.mark_success(video["name"], video["cost"])
-
-        hybrid.print_summary(len(videos), len(videos), sum(v["cost"] for v in videos))

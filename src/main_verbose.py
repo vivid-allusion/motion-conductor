@@ -15,7 +15,7 @@ from .utils.enhanced_logging import setup_dual_logging
 from .utils.verbose_output import log_stage_emoji
 from .utils.cleanup import archive_and_cleanup_logs
 from .validation.environment import validate_environment, validate_input_directories
-from .exceptions import VideoGenerationError, AuthenticationError, InputValidationError
+from .exceptions import handle_main_exception
 
 
 def main() -> int:
@@ -76,23 +76,12 @@ def main() -> int:
 
         return 0
 
-    except KeyboardInterrupt:
-        log_stage_emoji("failed", "Interrupted by user")
-        return 130
-    except AuthenticationError as e:
-        log_stage_emoji("failed", f"Authentication failed: {e}")
-        return 2
-    except InputValidationError as e:
-        log_stage_emoji("failed", f"Input validation failed: {e}")
-        return 3
-    except VideoGenerationError as e:
-        log_stage_emoji("failed", f"Video generation error: {e}")
-        logger.exception("Full traceback:")
-        return 4
     except Exception as e:
-        log_stage_emoji("failed", f"Fatal error: {e}")
-        logger.exception("Full traceback:")
-        return 1
+        return handle_main_exception(
+            e,
+            log_error=lambda msg: log_stage_emoji("failed", msg),
+            log_exception=logger.exception,
+        )
 
 
 if __name__ == "__main__":

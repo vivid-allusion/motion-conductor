@@ -14,7 +14,7 @@ except ImportError:
     logger.warning("alive-progress not installed, falling back to basic polling")
 
 from .base_async_client import BaseAsyncReplicateClient
-from ..models.video_processing import APIClientConfig
+from ..utils.verbose_output import API_STATUS_EMOJI
 
 
 class AsyncReplicateClientEnhanced(BaseAsyncReplicateClient):
@@ -28,7 +28,8 @@ class AsyncReplicateClientEnhanced(BaseAsyncReplicateClient):
         """
         Poll prediction with WAVES animation or basic polling.
 
-        Uses alive-progress WAVES if available, otherwise falls back to basic polling.
+        Uses alive-progress WAVES if available, otherwise falls back to basic polling
+        from the base class.
 
         Args:
             prediction: The prediction to poll
@@ -40,7 +41,7 @@ class AsyncReplicateClientEnhanced(BaseAsyncReplicateClient):
         if ALIVE_PROGRESS_AVAILABLE:
             return self._poll_prediction_with_waves(prediction, progress_callback)
         else:
-            return self._poll_prediction_basic(prediction, progress_callback)
+            return super()._poll_prediction(prediction, progress_callback)
 
     def _poll_prediction_with_waves(
         self,
@@ -127,69 +128,9 @@ class AsyncReplicateClientEnhanced(BaseAsyncReplicateClient):
                 # Wait before next poll
                 time.sleep(self.poll_interval)
 
-    def _poll_prediction_basic(
-        self,
-        prediction: Prediction,
-        progress_callback: Optional[Callable[[str, Optional[float]], None]] = None,
-    ) -> Optional[str]:
-        """Basic polling without waves (fallback when alive-progress not available)."""
-        start_time = time.time()
-        last_status = None
-        last_progress = None
-
-        while True:
-            # Check timeout
-            if time.time() - start_time > self.max_wait_time:
-                logger.error(f"Timeout: Prediction {prediction.id} took too long")
-                return None
-
-            # Reload prediction status
-            try:
-                prediction.reload()
-            except Exception as e:
-                logger.error(f"Failed to reload prediction: {e}")
-                return None
-
-            # Log status changes
-            if prediction.status != last_status:
-                self._log_status_change(prediction.status, last_status)
-                last_status = prediction.status
-
-            # Extract and log progress
-            progress_pct = self._extract_progress(prediction)
-            if progress_pct != last_progress:
-                if progress_pct is not None:
-                    logger.info(f"Processing: {progress_pct:.0f}% complete")
-                last_progress = progress_pct
-
-            # Callback for external progress tracking
-            if progress_callback:
-                progress_callback(prediction.status, progress_pct)
-
-            # Check completion states
-            if prediction.status == "succeeded":
-                return self._extract_output_url(prediction)
-            elif prediction.status == "failed":
-                logger.error(f"Prediction failed: {prediction.error}")
-                return None
-            elif prediction.status == "canceled":
-                logger.warning("Prediction was canceled")
-                return None
-
-            # Wait before next poll
-            time.sleep(self.poll_interval)
-
     def _format_status_text(self, prediction: Prediction, elapsed: float) -> str:
         """Format dual-line status text for waves animation."""
-        status_emoji = {
-            "starting": "🚀",
-            "processing": "⚙️",
-            "succeeded": "✅",
-            "failed": "❌",
-            "queued": "⏳",
-        }
-
-        emoji = status_emoji.get(prediction.status, "▶️")
+        emoji = API_STATUS_EMOJI.get(prediction.status, "▶️")
 
         # Line 1: Status and elapsed time
         elapsed_str = time.strftime("%M:%S", time.gmtime(elapsed))

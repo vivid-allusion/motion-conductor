@@ -27,29 +27,24 @@ class GenerationContext:
     adjustment_info: Optional[Dict[str, Any]] = None
 
     @classmethod
-    def from_job(
+    def from_video_result(
         cls,
         job: "MarkdownJob",
-        video_dir: Path,
+        output_dir: Path,
         profile: Dict[str, Any],
-        prompt: str,
         params: Dict[str, Any],
+        prompt: str,
         video_url: str,
         video_path: Path,
         cost: float,
         adjustment_info: Optional[Dict[str, Any]] = None,
     ) -> "GenerationContext":
-        """
-        Factory method to create context from job data.
-
-        Simplifies creation by using job.markdown_file for all file fields
-        and extracting job data automatically.
-        """
+        """Factory method to create context from video generation result."""
         return cls(
             prompt_file=job.markdown_file,
             image_url_file=job.markdown_file,
             num_frames_file=job.markdown_file,
-            output_dir=video_dir,
+            output_dir=output_dir,
             prompt=prompt,
             image_url=job.image_url,
             num_frames=job.num_frames,

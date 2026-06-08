@@ -55,65 +55,55 @@ def discover_markdown_jobs(
     return markdown_files
 
 
+def _parse_frame_count(num_frames_str: str) -> int:
+    """Parse and validate frame count from string."""
+    if not num_frames_str:
+        raise ValueError("Line 2 (num_frames) is empty")
+    try:
+        num_frames = int(num_frames_str)
+        if num_frames < 1:
+            raise ValueError(f"num_frames must be at least 1, got {num_frames}")
+        return num_frames
+    except ValueError as e:
+        raise ValueError(f"Line 2 must be a valid integer (num_frames): {e}")
+
+
+def _extract_image_url(image_line: str) -> str:
+    """Extract URL from markdown image syntax line."""
+    if not image_line:
+        raise ValueError("Line 3 (image URL) is empty")
+    image_pattern = r"!\[.*?\]\((https?://[^\s)]+)\)"
+    match = re.search(image_pattern, image_line)
+    if not match:
+        raise ValueError(
+            f"Line 3 must contain markdown image format: ![alt](URL)\n"
+            f"Found: {image_line}"
+        )
+    return match.group(1)
+
+
 def parse_markdown_job(markdown_file: Path) -> MarkdownJob:
     """
     Parse markdown job file with 3-line format:
     Line 1: Video prompt text
     Line 2: num_frames integer
     Line 3: Embedded image with URL ![...](URL)
-
-    Args:
-        markdown_file: Path to markdown job file
-
-    Returns:
-        MarkdownJob object with parsed data
-
-    Raises:
-        ValueError: If file format is invalid or data cannot be parsed
     """
     try:
         content = markdown_file.read_text()
         lines = content.split("\n")
 
-        # Ensure we have at least 3 lines
         if len(lines) < 3:
             raise ValueError(
                 f"Markdown file must have at least 3 lines, found {len(lines)} lines"
             )
 
-        # Line 1: Prompt text
         prompt = lines[0].strip()
         if not prompt:
             raise ValueError("Line 1 (prompt) is empty")
 
-        # Line 2: num_frames integer
-        num_frames_str = lines[1].strip()
-        if not num_frames_str:
-            raise ValueError("Line 2 (num_frames) is empty")
-
-        try:
-            num_frames = int(num_frames_str)
-            if num_frames < 1:
-                raise ValueError(f"num_frames must be at least 1, got {num_frames}")
-        except ValueError as e:
-            raise ValueError(f"Line 2 must be a valid integer (num_frames): {e}")
-
-        # Line 3: Extract URL from markdown image syntax
-        image_line = lines[2].strip()
-        if not image_line:
-            raise ValueError("Line 3 (image URL) is empty")
-
-        # Match markdown image format: ![alt](URL) or ![](URL)
-        image_pattern = r"!\[.*?\]\((https?://[^\s)]+)\)"
-        match = re.search(image_pattern, image_line)
-
-        if not match:
-            raise ValueError(
-                f"Line 3 must contain markdown image format: ![alt](URL)\n"
-                f"Found: {image_line}"
-            )
-
-        image_url = match.group(1)
+        num_frames = _parse_frame_count(lines[1].strip())
+        image_url = _extract_image_url(lines[2].strip())
 
         logger.debug(
             f"Parsed {markdown_file.name}: prompt='{prompt[:30]}...', "

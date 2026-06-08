@@ -70,32 +70,19 @@ class ProfileValidator:
         return pricing
     
     @staticmethod
-    def validate_duration_section(profile_data: Dict[str, Any], yaml_file: Path) -> Dict[str, Any]:
-        """Validate duration configuration fields in profile."""
-        required_fields = ['duration_type', 'fps', 'duration_min', 'duration_max', 'duration_param_name']
-        
-        for field in required_fields:
-            if field not in profile_data:
-                raise ProfileValidationError(
-                    f"Profile {yaml_file} is missing required field '{field}'. "
-                    f"All duration fields are required: {', '.join(required_fields)}"
-                )
-        
-        # Validate duration_type
-        if profile_data['duration_type'] not in ['frames', 'seconds']:
-            raise ProfileValidationError(
-                f"Profile {yaml_file} has invalid duration_type '{profile_data['duration_type']}'. "
-                f"Must be either 'frames' or 'seconds'"
-            )
-        
-        # Validate numeric fields
+    def _validate_fps(profile_data: Dict[str, Any], yaml_file: Path) -> int:
+        """Validate fps field is a positive integer."""
         try:
             fps = int(profile_data['fps'])
             if fps <= 0:
                 raise ProfileValidationError(f"fps must be positive, got {fps}")
+            return fps
         except (ValueError, TypeError):
             raise ProfileValidationError(f"Profile {yaml_file} has invalid fps value: {profile_data['fps']}")
-        
+
+    @staticmethod
+    def _validate_duration_bounds(profile_data: Dict[str, Any], yaml_file: Path) -> tuple[int, int]:
+        """Validate duration_min and duration_max fields."""
         try:
             duration_min = int(profile_data['duration_min'])
             duration_max = int(profile_data['duration_max'])
@@ -105,22 +92,49 @@ class ProfileValidator:
                 raise ProfileValidationError(f"duration_max must be positive, got {duration_max}")
             if duration_min > duration_max:
                 raise ProfileValidationError(f"duration_min ({duration_min}) cannot be greater than duration_max ({duration_max})")
+            return duration_min, duration_max
         except (ValueError, TypeError) as e:
             raise ProfileValidationError(f"Profile {yaml_file} has invalid duration limits: {e}")
-        
-        # Validate param name
-        if not profile_data['duration_param_name'] or not isinstance(profile_data['duration_param_name'], str):
+
+    @staticmethod
+    def _validate_param_name(profile_data: Dict[str, Any], yaml_file: Path) -> str:
+        """Validate duration_param_name is a non-empty string."""
+        param_name = profile_data['duration_param_name']
+        if not param_name or not isinstance(param_name, str):
             raise ProfileValidationError(
                 f"Profile {yaml_file} has invalid duration_param_name. "
                 f"Must be a non-empty string like 'num_frames', 'duration', or 'seconds'"
             )
-        
+        return param_name
+
+    @staticmethod
+    def validate_duration_section(profile_data: Dict[str, Any], yaml_file: Path) -> Dict[str, Any]:
+        """Validate duration configuration fields in profile."""
+        required_fields = ['duration_type', 'fps', 'duration_min', 'duration_max', 'duration_param_name']
+
+        for field in required_fields:
+            if field not in profile_data:
+                raise ProfileValidationError(
+                    f"Profile {yaml_file} is missing required field '{field}'. "
+                    f"All duration fields are required: {', '.join(required_fields)}"
+                )
+
+        if profile_data['duration_type'] not in ['frames', 'seconds']:
+            raise ProfileValidationError(
+                f"Profile {yaml_file} has invalid duration_type '{profile_data['duration_type']}'. "
+                f"Must be either 'frames' or 'seconds'"
+            )
+
+        fps = ProfileValidator._validate_fps(profile_data, yaml_file)
+        duration_min, duration_max = ProfileValidator._validate_duration_bounds(profile_data, yaml_file)
+        param_name = ProfileValidator._validate_param_name(profile_data, yaml_file)
+
         return {
             'duration_type': profile_data['duration_type'],
             'fps': fps,
             'duration_min': duration_min,
             'duration_max': duration_max,
-            'duration_param_name': profile_data['duration_param_name']
+            'duration_param_name': param_name,
         }
     
     @staticmethod

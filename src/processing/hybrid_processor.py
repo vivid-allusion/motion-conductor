@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Tuple, List
 
 from loguru import logger
 
@@ -17,9 +17,10 @@ from ..models.video_processing import VideoProcessingContext, APIClientConfig
 from .cost_calculator import calculate_cost_from_params
 from .input_discovery import discover_markdown_jobs, parse_markdown_job
 from .output_generator import save_generation_files
+from .processor import _apply_prompt_modifications, _enforce_single_profile, _record_adjustment
 from .profile_loader import load_active_profiles
+from ..utils.path_validator import validate_custom_paths
 from .video_downloader import download_video
-from .processor import _apply_prompt_modifications, _enforce_single_profile
 
 
 def process_batch_hybrid(context: ProcessingContext) -> Dict[str, Any]:
@@ -55,19 +56,32 @@ def _setup_processing_hybrid(
     config = APIClientConfig(api_token=context.client.api_token, poll_interval=3)
     async_client = AsyncReplicateClientEnhanced(config=config)
 
-    log_stage_emoji("preparing", "Discovering markdown jobs...")
-    markdown_files = discover_markdown_jobs(context.input_dir)
-    jobs = [parse_markdown_job(md_file) for md_file in markdown_files]
-    logger.success(f"Found {len(jobs)} markdown jobs")
-
     log_stage_emoji("preparing", "Loading video profile...")
     active_profiles = load_active_profiles(context.profiles_dir)
     profile = _enforce_single_profile(active_profiles)
     logger.success(f"Loaded profile: {profile['name']}")
 
+    log_stage_emoji("preparing", "Discovering markdown jobs...")
+
+    custom_input_path = profile.get("custom_input_path")
+    custom_output_path = profile.get("custom_output_path")
+
+    if custom_input_path or custom_output_path:
+        validate_custom_paths(
+            Path(custom_input_path) if custom_input_path else None,
+            Path(custom_output_path) if custom_output_path else None,
+        )
+
+    markdown_files = discover_markdown_jobs(context.input_dir, custom_input_path)
+    jobs = [parse_markdown_job(md_file) for md_file in markdown_files]
+    logger.success(f"Found {len(jobs)} markdown jobs")
+
     timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    base_output_dir = (
+        Path(custom_output_path) if custom_output_path else context.output_dir
+    )
     dir_name = f"{timestamp}_IMG-TO-VID"
-    run_dir = context.output_dir / dir_name
+    run_dir = base_output_dir / dir_name
     run_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output: {run_dir}")
 
@@ -95,10 +109,7 @@ def _execute_video_batch_hybrid(
     total_cost = 0.0
     all_adjustments = []
 
-    with hybrid.track_generation(total, title="Video Generation Batch") as (
-        bar,
-        console,
-    ):
+    with hybrid.track_generation(total, title="Video Generation Batch") as bar:
         for job in jobs:
             video_name = job.markdown_file.stem
 
@@ -125,14 +136,7 @@ def _execute_video_batch_hybrid(
                 success_count += 1
                 total_cost += video_cost
 
-                if adjustment_info and adjustment_info.get("reason"):
-                    all_adjustments.append(
-                        {
-                            "prompt_file": job.markdown_file.name,
-                            "profile": profile["name"],
-                            **adjustment_info,
-                        }
-                    )
+                _record_adjustment(adjustment_info, job.markdown_file.name, profile["name"], all_adjustments)
 
                 hybrid.mark_success(video_name, video_cost)
 
@@ -208,16 +212,12 @@ def _process_video_hybrid(
     hybrid.update_video_status(video_name, "Finalizing", "Saving documentation")
     hybrid.log_phase_start("Finalizing", "Generating reports and logs")
 
-    gen_context = GenerationContext(
-        prompt_file=job.markdown_file,
-        image_url_file=job.markdown_file,
-        num_frames_file=job.markdown_file,
+    gen_context = GenerationContext.from_video_result(
+        job=job,
         output_dir=context.run_dir,
-        prompt=prompt,
-        image_url=image_url,
-        num_frames=num_frames,
         profile=context.profile,
         params=params,
+        prompt=prompt,
         video_url=video_url,
         video_path=video_path,
         cost=video_cost,

@@ -2,7 +2,6 @@
 
 import pytest
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from unittest.mock import Mock
 
 from src.utils.verbose_output import show_project_header

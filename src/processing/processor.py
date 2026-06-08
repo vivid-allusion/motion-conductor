@@ -2,6 +2,23 @@
 
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
+
+
+def _record_adjustment(
+    adjustment_info: Dict[str, Any] | None,
+    job_name: str,
+    profile_name: str,
+    all_adjustments: List[Dict[str, Any]],
+) -> None:
+    """Record duration adjustment info if present."""
+    if adjustment_info and adjustment_info.get("reason"):
+        all_adjustments.append(
+            {
+                "prompt_file": job_name,
+                "profile": profile_name,
+                **adjustment_info,
+            }
+        )
 from datetime import datetime
 from loguru import logger
 from rich.progress import Progress
@@ -64,13 +81,7 @@ def _process_jobs(
             client, job, profile, output_dir
         )
 
-        if adjustment_info and adjustment_info.get("reason"):
-            adjustment_record = {
-                "markdown_file": job.markdown_file.name,
-                "profile": profile["name"],
-                **adjustment_info,
-            }
-            all_adjustments.append(adjustment_record)
+        _record_adjustment(adjustment_info, job.markdown_file.name, profile["name"], all_adjustments)
 
         success_count += 1
         total_cost += video_cost
@@ -233,16 +244,12 @@ def _process_single_video(
 
         video_cost = calculate_cost_from_params(profile, params, num_frames)
 
-        context = GenerationContext(
-            prompt_file=job.markdown_file,
-            image_url_file=job.markdown_file,
-            num_frames_file=job.markdown_file,
+        context = GenerationContext.from_video_result(
+            job=job,
             output_dir=run_dir,
-            prompt=original_prompt,
-            image_url=image_url,
-            num_frames=num_frames,
             profile=profile,
             params=params,
+            prompt=original_prompt,
             video_url=video_url,
             video_path=video_path,
             cost=video_cost,

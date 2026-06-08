@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Optional, Any, Callable, Union
 from contextlib import contextmanager
 from loguru import logger
 
+from .verbose_output import API_STATUS_EMOJI
+
 if TYPE_CHECKING:
     from alive_progress import alive_bar
 
@@ -150,49 +152,6 @@ class ProgressBar:
                 pass
 
 
-class EpicProgress:
-    """Epic progress bar with alive-progress."""
-
-    def __init__(self, transient: bool = False) -> None:
-        self.transient = transient
-        self.progress: Optional[ProgressBar] = None
-
-    def create_progress(self) -> ProgressBar:
-        """Create progress bar."""
-        return ProgressBar(
-            bar="smooth",
-            spinner="dots_waves",
-            dual_line=True,
-            stats=True,
-            monitor=True,
-            elapsed=True,
-        )
-
-    @contextmanager
-    def create_with_panel(self, title: str = "Video Generation Progress"):
-        """Create progress with panel wrapper."""
-        self.progress = self.create_progress()
-
-        try:
-            self.progress.__enter__()
-            yield self.progress
-        finally:
-            self.progress.__exit__(None, None, None)
-            self.progress = None
-
-    @contextmanager
-    def create_simple(self):
-        """Create simple progress."""
-        self.progress = self.create_progress()
-
-        try:
-            self.progress.__enter__()
-            yield self.progress
-        finally:
-            self.progress.__exit__(None, None, None)
-            self.progress = None
-
-
 class VideoGenerationProgress:
     """Video generation progress with alive-progress."""
 
@@ -295,15 +254,7 @@ def create_api_callback(
     """Create callback for API polling progress."""
 
     def callback(status: str, percentage: Optional[float]) -> None:
-        status_emoji = {
-            "starting": "🚀",
-            "processing": "⚙️",
-            "succeeded": "✅",
-            "failed": "❌",
-            "queued": "⏳",
-        }
-
-        emoji = status_emoji.get(status.lower(), "▶️")
+        emoji = API_STATUS_EMOJI.get(status.lower(), "▶️")
 
         if percentage is not None:
             status_text = f"{emoji} {status.title()} ({percentage:.0f}%)"
@@ -313,10 +264,3 @@ def create_api_callback(
         progress.update(task_id, status=status_text)
 
     return callback
-
-
-def create_epic_progress(
-    title: str = "Processing", transient: bool = False, **kwargs: Any
-) -> EpicProgress:
-    """Create an epic progress bar."""
-    return EpicProgress(transient=transient)

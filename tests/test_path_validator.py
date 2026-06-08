@@ -3,7 +3,6 @@
 import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import sys
 
 from src.utils.path_validator import validate_custom_path, validate_custom_paths
 

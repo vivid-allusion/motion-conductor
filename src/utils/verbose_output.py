@@ -5,6 +5,14 @@ import time
 from typing import TYPE_CHECKING, Optional, Any, Union, List, Dict
 from loguru import logger
 
+API_STATUS_EMOJI: Dict[str, str] = {
+    "starting": "🚀",
+    "processing": "⚙️",
+    "succeeded": "✅",
+    "failed": "❌",
+    "queued": "⏳",
+}
+
 if TYPE_CHECKING:
     from alive_progress import alive_bar
 

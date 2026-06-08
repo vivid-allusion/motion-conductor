@@ -1,8 +1,7 @@
 """Tests for domain models."""
 from pathlib import Path
 from src.models.generation import GenerationContext
-from src.models.profile import VideoProfile
-from src.models.triplet import InputTriplet
+from src.models.triplet import MarkdownJob
 
 
 class TestGenerationContext:
@@ -29,43 +28,17 @@ class TestGenerationContext:
         assert context.cost == 1.0
 
 
-class TestVideoProfile:
-    """Tests for VideoProfile model."""
+class TestMarkdownJob:
+    """Tests for MarkdownJob model."""
     
     def test_creation(self):
-        """Test creating a VideoProfile."""
-        profile = VideoProfile(
-            name="test_profile",
-            model_id="model/endpoint",
-            nickname="test",
-            pricing={"cost_per_frame": 0.001},
-            parameters={"resolution": "480p"}
+        """Test creating a MarkdownJob."""
+        job = MarkdownJob(
+            markdown_file=Path("test.md"),
+            prompt="test prompt",
+            num_frames=100,
+            image_url="http://example.com/image.jpg"
         )
-        assert profile.name == "test_profile"
-        assert profile.model_id == "model/endpoint"
-    
-
-
-class TestInputTriplet:
-    """Tests for InputTriplet model."""
-    
-    def test_creation(self):
-        """Test creating an InputTriplet."""
-        triplet = InputTriplet(
-            prompt_file=Path("prompt.txt"),
-            image_url_file=Path("image.txt"),
-            num_frames_file=Path("frames.txt")
-        )
-        assert triplet.prompt_file == Path("prompt.txt")
-    
-    def test_unpacking(self):
-        """Test unpacking InputTriplet."""
-        triplet = InputTriplet(
-            prompt_file=Path("prompt.txt"),
-            image_url_file=Path("image.txt"),
-            num_frames_file=Path("frames.txt")
-        )
-        prompt, image, frames = triplet
-        assert prompt == Path("prompt.txt")
-        assert image == Path("image.txt")
-        assert frames == Path("frames.txt")
+        assert job.prompt == "test prompt"
+        assert job.num_frames == 100
+        assert job.image_url == "http://example.com/image.jpg"

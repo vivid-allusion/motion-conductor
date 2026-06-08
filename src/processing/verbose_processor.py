@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Tuple, List
 
 from loguru import logger
 
@@ -19,7 +19,7 @@ from .input_discovery import discover_markdown_jobs, parse_markdown_job
 from .output_generator import save_generation_files
 from .profile_loader import load_active_profiles
 from .video_downloader import download_video
-from .processor import _apply_prompt_modifications, _enforce_single_profile
+from .processor import _apply_prompt_modifications, _enforce_single_profile, _record_adjustment
 
 
 def process_batch_verbose(context: ProcessingContext) -> Dict[str, Any]:
@@ -121,14 +121,7 @@ def _execute_video_batch(
                 success_count += 1
                 total_cost += video_cost
 
-                if adjustment_info and adjustment_info.get("reason"):
-                    all_adjustments.append(
-                        {
-                            "prompt_file": job.markdown_file.name,
-                            "profile": profile["name"],
-                            **adjustment_info,
-                        }
-                    )
+                _record_adjustment(adjustment_info, job.markdown_file.name, profile["name"], all_adjustments)
 
                 epic_progress.mark_success(
                     progress, main_task, video_name, video_cost
@@ -249,16 +242,12 @@ def _process_video_verbose(
         phase="Finalizing",
     )
 
-    gen_context = GenerationContext(
-        prompt_file=job.markdown_file,
-        image_url_file=job.markdown_file,
-        num_frames_file=job.markdown_file,
+    gen_context = GenerationContext.from_video_result(
+        job=job,
         output_dir=context.run_dir,
-        prompt=prompt,
-        image_url=image_url,
-        num_frames=num_frames,
         profile=context.profile,
         params=params,
+        prompt=prompt,
         video_url=video_url,
         video_path=video_path,
         cost=video_cost,

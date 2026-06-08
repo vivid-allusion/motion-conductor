@@ -60,38 +60,3 @@ def generate_video_filename(markdown_filename: str) -> str:
     # No timestamp found, add as suffix (no brackets)
     new_stem = f"{stem}_{current_timestamp}"
     return f"{new_stem}.mp4"
-
-
-def extract_timestamp_from_filename(filename: str) -> str | None:
-    """
-    Extract timestamp from filename if present (both bracketed and unbracketed).
-
-    Args:
-        filename: Filename to extract timestamp from
-
-    Returns:
-        Timestamp string (YYMMDD_HHMMSS) or None if not found
-
-    Examples:
-        >>> extract_timestamp_from_filename("video_[250118_143022].md")
-        "250118_143022"
-
-        >>> extract_timestamp_from_filename("frame0145-260101_220134.md")
-        "260101_220134"
-
-        >>> extract_timestamp_from_filename("video.md")
-        None
-    """
-    # Try bracketed format first
-    bracketed_pattern = r"\[(\d{6}_\d{6})\]"
-    match = re.search(bracketed_pattern, filename)
-    if match:
-        return match.group(1)
-
-    # Try unbracketed format (suffix after dash or underscore)
-    unbracketed_pattern = r"[-_](\d{6}_\d{6})(?:\.|$)"
-    match = re.search(unbracketed_pattern, filename)
-    if match:
-        return match.group(1)
-
-    return None
