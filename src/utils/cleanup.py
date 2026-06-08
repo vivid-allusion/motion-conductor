@@ -29,6 +29,14 @@ def archive_and_cleanup_logs(output_dir: Path) -> None:
         logger.warning(f"Output directory does not exist: {output_dir}")
         return
 
+    try:
+        _archive_and_trash(output_dir)
+    except Exception as e:
+        logger.warning(f"Failed to cleanup logs (non-fatal): {e}")
+
+
+def _archive_and_trash(output_dir: Path) -> None:
+    """Archive non-MP4 files to zip and trash originals (internal, raises on failure)."""
     # Find all non-MP4 files
     all_files = list(output_dir.rglob("*"))
     non_mp4_files = [f for f in all_files if f.is_file() and f.suffix.lower() != ".mp4"]

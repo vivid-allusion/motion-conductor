@@ -1,6 +1,5 @@
 """Integration tests for custom path configuration."""
 
-import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 

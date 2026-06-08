@@ -4,6 +4,8 @@ from pathlib import Path
 from loguru import logger
 
 from ..auth import authenticate
+from ..api.client import ReplicateClient
+from ..models.video_processing import APIClientConfig
 from ..exceptions import AuthenticationError, InputValidationError
 
 
@@ -56,3 +58,23 @@ def validate_input_directories(input_dir: Path, profiles_dir: Path) -> None:
         raise InputValidationError(error_msg)
 
     logger.info("Profiles directory validated successfully")
+
+
+def bootstrap_pipeline(input_dir: Path, profiles_dir: Path) -> ReplicateClient:
+    """Validate environment and create configured API client.
+
+    Args:
+        input_dir: Default directory for markdown job files
+        profiles_dir: Directory containing profile YAML files
+
+    Returns:
+        Configured ReplicateClient ready for use
+
+    Raises:
+        AuthenticationError: If authentication fails
+        InputValidationError: If required directories don't exist
+    """
+    api_key = validate_environment()
+    validate_input_directories(input_dir, profiles_dir)
+    config = APIClientConfig(api_token=api_key)
+    return ReplicateClient(config=config)

@@ -8,6 +8,9 @@ from replicate.client import Client
 from ..utils.timeouts import create_video_timeout
 from ..models.video_processing import APIClientConfig
 
+from .retry_utils import compute_retry_delay
+from .prediction_utils import extract_video_url
+
 
 class ReplicateClient:
     """Wrapper for Replicate with sequential video processing."""
@@ -72,72 +75,21 @@ class ReplicateClient:
         return self._parse_video_response(result)
 
     def _parse_video_response(self, result: Any) -> Optional[str]:
-        """
-        Parse API response to extract video URL.
-
-        Args:
-            result: API response (various types possible)
-
-        Returns:
-            Video URL if found, None otherwise
-        """
+        """Parse API response to extract video URL."""
         if not result:
             logger.error("No result from Replicate API")
             return None
 
         logger.debug(f"Result type: {type(result)}, value: {result}")
 
-        # Response type handlers
-        handlers = {str: self._handle_string_response, list: self._handle_list_response}
-
-        # Check for direct type match
-        result_type = type(result)
-        if result_type in handlers:
-            return handlers[result_type](result)
-
-        # Check for FileOutput object
-        if hasattr(result, "url"):
-            return self._handle_file_output(result)
-
-        # Fallback to string conversion
-        return self._handle_fallback(result)
-
-    def _handle_string_response(self, result: str) -> str:
-        """Handle string response."""
-        logger.info(f"Successfully got video URL: {result}")
-        return result
-
-    def _handle_file_output(self, result: Any) -> str:
-        """Handle FileOutput response."""
-        logger.info(f"Successfully got video URL from FileOutput: {result.url}")
-        return result.url
-
-    def _handle_list_response(self, result: list) -> Optional[str]:
-        """Handle list response."""
-        if not result:
-            return None
-
-        first_item = result[0]
-        if hasattr(first_item, "url"):
-            logger.info(
-                f"Successfully got video URL from list FileOutput: {first_item.url}"
-            )
-            return first_item.url
-        else:
-            logger.info(f"Successfully got video URL from list: {first_item}")
-            return first_item
-
-    def _handle_fallback(self, result: Any) -> Optional[str]:
-        """Handle unknown response types."""
-        result_str = str(result)
-        if result_str.startswith("http"):
-            logger.info(f"Successfully converted result to URL: {result_str}")
-            return result_str
+        url = extract_video_url(result)
+        if url:
+            logger.info(f"Successfully got video URL: {url}")
         else:
             logger.error(
                 f"Unexpected response format - type: {type(result)}, value: {result}"
             )
-            return None
+        return url
 
     def _call_with_retry(self, model: str, payload: Dict[str, Any]) -> Any:
         """
@@ -168,19 +120,20 @@ class ReplicateClient:
             except Exception as e:
                 last_error = e
 
-                # Check if it's a rate limit error
-                if "429" in str(e) or "rate" in str(e).lower():
+                wait_time, is_rate_limited = compute_retry_delay(
+                    e, attempt, self.rate_limit_retry_delay
+                )
+
+                if is_rate_limited:
                     logger.warning(
-                        f"Rate limited, waiting {self.rate_limit_retry_delay}s..."
+                        f"Rate limited, waiting {wait_time}s..."
                     )
-                    time.sleep(self.rate_limit_retry_delay)
+                    time.sleep(wait_time)
                     continue
 
-                # Other errors
                 logger.error(f"Error on attempt {attempt}: {e}")
 
                 if attempt < self.max_retries:
-                    wait_time = 2**attempt  # Exponential backoff
                     logger.info(f"Retrying in {wait_time}s...")
                     time.sleep(wait_time)
                 else:

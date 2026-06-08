@@ -112,3 +112,24 @@ def create_cost_report(results: Dict[str, Any], output_dir: Path) -> None:
     report_path = output_dir / "cost_report.md"
     report_path.write_text(report)
     logger.info(f"Cost report saved: {report_path}")
+
+
+def generate_all_reports(results: Dict[str, Any], output_dir: Path) -> None:
+    """Generate all result reports: success/failure, cost, and adjustments.
+
+    Args:
+        results: Processing results dictionary
+        output_dir: Directory to save reports
+    """
+    create_success_report(results, output_dir)
+    create_cost_report(results, output_dir)
+
+    if results.get("adjustments"):
+        from ..reporting.adjustments_reporter import create_adjustments_report
+
+        create_adjustments_report(
+            adjustments=results["adjustments"],
+            output_dir=output_dir,
+            total_processed=results["total"],
+        )
+        logger.info(f"{len(results['adjustments'])} duration adjustments made")

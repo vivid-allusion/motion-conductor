@@ -1,7 +1,6 @@
 """Unit tests for cleanup utilities."""
 
 import subprocess
-from pathlib import Path
 from zipfile import ZipFile
 import pytest
 from src.utils.cleanup import archive_and_cleanup_logs, _trash_files

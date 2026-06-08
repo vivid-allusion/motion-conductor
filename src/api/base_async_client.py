@@ -12,6 +12,9 @@ from ..models.video_processing import VideoRequest, APIClientConfig
 from ..utils.verbose_output import log_stage_emoji, show_error_with_retry
 from ..utils.timeouts import create_video_timeout
 
+from .retry_utils import compute_retry_delay
+from .prediction_utils import extract_video_url
+
 
 class BaseAsyncReplicateClient:
     """Base class with shared async client methods."""
@@ -103,11 +106,9 @@ class BaseAsyncReplicateClient:
             except Exception as e:
                 last_error = e
 
-                # Handle rate limiting
-                if "429" in str(e) or "rate" in str(e).lower():
-                    wait_time = self.rate_limit_retry_delay
-                else:
-                    wait_time = 2**attempt  # Exponential backoff
+                wait_time, _ = compute_retry_delay(
+                    e, attempt, self.rate_limit_retry_delay
+                )
 
                 show_error_with_retry(e, attempt, self.max_retries, wait_time)
 
@@ -152,25 +153,12 @@ class BaseAsyncReplicateClient:
 
         logger.debug(f"Output type: {type(output)}, value: {output}")
 
-        # Handle different output formats
-        if isinstance(output, str):
-            return output
-        elif hasattr(output, "url"):
-            return output.url
-        elif isinstance(output, list) and len(output) > 0:
-            first_item = output[0]
-            if hasattr(first_item, "url"):
-                return first_item.url
-            elif isinstance(first_item, str):
-                return first_item
+        url = extract_video_url(output)
+        if url:
+            logger.info(f"Successfully extracted URL: {url}")
         else:
-            # Try converting to string
-            result_str = str(output)
-            if result_str.startswith("http"):
-                return result_str
-
-        logger.error(f"Could not extract URL from output: {output}")
-        return None
+            logger.error(f"Could not extract URL from output: {output}")
+        return url
 
     def _poll_prediction(
         self,

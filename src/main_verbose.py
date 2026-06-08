@@ -3,18 +3,16 @@
 import sys
 from loguru import logger
 
-from .api.client import ReplicateClient
 from .config.settings import INPUT_DIR, PROFILES_DIR, OUTPUT_DIR
 from .processing.verbose_processor import process_batch_verbose
 from .models.processing import ProcessingContext
-from .models.video_processing import APIClientConfig
-from .output.reporter import create_success_report, create_cost_report
+from .output.reporter import generate_all_reports
 
 # Lazy import for adjustments_reporter - only loaded when needed
 from .utils.enhanced_logging import setup_dual_logging
 from .utils.verbose_output import log_stage_emoji
 from .utils.cleanup import archive_and_cleanup_logs
-from .validation.environment import validate_environment, validate_input_directories
+from .validation.environment import bootstrap_pipeline
 from .exceptions import handle_main_exception
 
 
@@ -25,15 +23,7 @@ def main() -> int:
 
     try:
         log_stage_emoji("starting", "Validating environment and authentication...")
-        api_key = validate_environment()
-        logger.success("Authentication successful")
-
-        log_stage_emoji("preparing", "Validating input directories...")
-        validate_input_directories(INPUT_DIR, PROFILES_DIR)
-        logger.success("Input directory and profiles validated")
-
-        config = APIClientConfig(api_token=api_key)
-        client = ReplicateClient(config=config)
+        client = bootstrap_pipeline(INPUT_DIR, PROFILES_DIR)
 
         context = ProcessingContext(
             client=client,
@@ -48,24 +38,10 @@ def main() -> int:
 
         log_stage_emoji("saving", "Generating reports...")
         output_dir = results["output_dir"]
-        create_success_report(results, output_dir)
-        create_cost_report(results, output_dir)
-
-        if results.get("adjustments"):
-            from .reporting.adjustments_reporter import create_adjustments_report
-
-            create_adjustments_report(
-                adjustments=results["adjustments"],
-                output_dir=output_dir,
-                total_processed=results["total"],
-            )
-            logger.info(f"{len(results['adjustments'])} duration adjustments made")
+        generate_all_reports(results, output_dir)
 
         log_stage_emoji("saving", "Archiving log files...")
-        try:
-            archive_and_cleanup_logs(output_dir)
-        except Exception as e:
-            logger.warning(f"Failed to cleanup logs (non-fatal): {e}")
+        archive_and_cleanup_logs(output_dir)
 
         logger.success("=" * 60)
         log_stage_emoji("complete", f"All processing complete!")

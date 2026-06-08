@@ -2,10 +2,7 @@
 
 import re
 from datetime import datetime
-from src.utils.filename_utils import (
-    generate_video_filename,
-    extract_timestamp_from_filename,
-)
+from src.utils.filename_utils import generate_video_filename
 
 
 def test_generate_video_filename_with_bracketed_timestamp():
@@ -27,47 +24,49 @@ def test_generate_video_filename_with_bracketed_timestamp():
 
 
 def test_generate_video_filename_with_unbracketed_timestamp():
-    """Test that unbracketed timestamp is replaced with bracketed current one."""
+    """Test that unbracketed timestamp is replaced with current one (no brackets)."""
     input_name = "frame0145-260101_220134.md"
     result = generate_video_filename(input_name)
 
-    # Check format: frame0145-[YYMMDD_HHMMSS].mp4
-    assert result.startswith("frame0145-[")
-    assert result.endswith("].mp4")
+    # Check format: frame0145-YYMMDD_HHMMSS.mp4 (no brackets)
+    assert "frame0145-" in result
+    assert result.endswith(".mp4")
+    assert not result.endswith("].mp4")
 
     # Verify old unbracketed timestamp is gone
     assert "260101_220134" not in result
 
-    # Verify new timestamp is bracketed
-    timestamp_pattern = r"\[(\d{6}_\d{6})\]"
+    # Verify new timestamp is unbracketed
+    timestamp_pattern = r"(\d{6}_\d{6})"
     match = re.search(timestamp_pattern, result)
     assert match is not None
 
 
 def test_generate_video_filename_with_underscore_timestamp():
-    """Test unbracketed timestamp with underscore separator."""
+    """Test unbracketed timestamp with underscore separator (replaced by dash)."""
     input_name = "scene_240615_120000.md"
     result = generate_video_filename(input_name)
 
-    # Check that result has bracketed timestamp
-    assert result.startswith("scene-[")
-    assert result.endswith("].mp4")
+    # Underscore separator replaced by dash; no brackets added
+    assert result.startswith("scene-")
+    assert not result.endswith("].mp4")
 
     # Verify old timestamp is replaced
     assert "240615_120000" not in result
 
 
 def test_generate_video_filename_without_timestamp():
-    """Test that timestamp is added as suffix when none exists."""
+    """Test that timestamp is added as suffix (no brackets) when none exists."""
     input_name = "my_video.md"
     result = generate_video_filename(input_name)
 
-    # Check format: my_video_[YYMMDD_HHMMSS].mp4
-    assert result.startswith("my_video_[")
-    assert result.endswith("].mp4")
+    # Check format: my_video_YYMMDD_HHMMSS.mp4 (no brackets)
+    assert result.startswith("my_video_")
+    assert not result.endswith("].mp4")
+    assert result.endswith(".mp4")
 
     # Verify timestamp pattern matches
-    timestamp_pattern = r"\[(\d{6}_\d{6})\]"
+    timestamp_pattern = r"(\d{6}_\d{6})"
     match = re.search(timestamp_pattern, result)
     assert match is not None
 
@@ -83,8 +82,9 @@ def test_generate_video_filename_no_extension():
     input_name = "another_video"
     result = generate_video_filename(input_name)
 
-    assert result.startswith("another_video_[")
-    assert result.endswith("].mp4")
+    assert result.startswith("another_video_")
+    assert not result.endswith("].mp4")
+    assert result.endswith(".mp4")
 
 
 def test_generate_video_filename_multiple_timestamps():
@@ -97,46 +97,13 @@ def test_generate_video_filename_multiple_timestamps():
     assert result.endswith(".mp4")
 
 
-def test_extract_timestamp_from_bracketed_filename():
-    """Test extracting bracketed timestamp."""
-    filename = "video_[250118_143022].md"
-    result = extract_timestamp_from_filename(filename)
-
-    assert result == "250118_143022"
-
-
-def test_extract_timestamp_from_unbracketed_filename():
-    """Test extracting unbracketed timestamp."""
-    filename = "frame0145-260101_220134.md"
-    result = extract_timestamp_from_filename(filename)
-
-    assert result == "260101_220134"
-
-
-def test_extract_timestamp_from_filename_without_timestamp():
-    """Test extracting when no timestamp exists."""
-    filename = "video.md"
-    result = extract_timestamp_from_filename(filename)
-
-    assert result is None
-
-
-def test_extract_timestamp_prefers_bracketed():
-    """Test that bracketed timestamp is preferred over unbracketed."""
-    filename = "video_[250118_143022]-260101_220134.md"
-    result = extract_timestamp_from_filename(filename)
-
-    # Should return bracketed timestamp first
-    assert result == "250118_143022"
-
-
 def test_generate_video_filename_with_special_characters():
     """Test with special characters in filename."""
     input_name = "my-video_test (1).md"
     result = generate_video_filename(input_name)
 
-    assert result.startswith("my-video_test (1)_[")
-    assert result.endswith("].mp4")
+    assert result.startswith("my-video_test (1)_")
+    assert not result.endswith("].mp4")
 
 
 def test_generate_video_filename_preserves_path():
@@ -147,23 +114,15 @@ def test_generate_video_filename_preserves_path():
     # Should be filename only, no path separators
     assert "/" not in result
     assert "\\" not in result
-    assert result.startswith("scene_001_[")
+    assert result.startswith("scene_001_")
 
 
 def test_generate_video_filename_with_unbracketed_dash():
-    """Test unbracketed timestamp with dash separator."""
+    """Test unbracketed timestamp with dash separator (preserved)."""
     input_name = "frame0145-260101_220134.md"
     result = generate_video_filename(input_name)
 
-    # Should replace with bracketed timestamp
-    assert result.startswith("frame0145-[")
-    assert result.endswith("].mp4")
+    # Dash separator preserved; no brackets added
+    assert result.startswith("frame0145-")
+    assert not result.endswith("].mp4")
     assert "260101_220134" not in result
-
-
-def test_extract_unbracketed_timestamp():
-    """Test extracting unbracketed timestamp."""
-    filename = "frame0145-260101_220134.md"
-    result = extract_timestamp_from_filename(filename)
-
-    assert result == "260101_220134"

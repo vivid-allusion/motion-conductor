@@ -1,6 +1,5 @@
 """Hybrid video processor using BOTH alive-progress AND Rich for maximum impact."""
 
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Tuple, List
 
@@ -13,13 +12,13 @@ from ..utils.filename_utils import generate_video_filename
 from ..models.generation import GenerationContext
 from ..models.processing import ProcessingContext
 from ..models.triplet import MarkdownJob
-from ..models.video_processing import VideoProcessingContext, APIClientConfig
+from ..models.video_processing import VideoProcessingContext
 from .cost_calculator import calculate_cost_from_params
 from .input_discovery import discover_markdown_jobs, parse_markdown_job
 from .output_generator import save_generation_files
 from .processor import _apply_prompt_modifications, _enforce_single_profile, _record_adjustment
 from .profile_loader import load_active_profiles
-from ..utils.path_validator import validate_custom_paths
+from .verbose_processor import _setup_processing_base
 from .video_downloader import download_video
 
 
@@ -52,40 +51,8 @@ def process_batch_hybrid(context: ProcessingContext) -> Dict[str, Any]:
 def _setup_processing_hybrid(
     context: ProcessingContext,
 ) -> Tuple[AsyncReplicateClientEnhanced, List[MarkdownJob], Dict[str, Any], Path]:
-    """Setup processing environment and discover inputs."""
-    config = APIClientConfig(api_token=context.client.api_token, poll_interval=3)
-    async_client = AsyncReplicateClientEnhanced(config=config)
-
-    log_stage_emoji("preparing", "Loading video profile...")
-    active_profiles = load_active_profiles(context.profiles_dir)
-    profile = _enforce_single_profile(active_profiles)
-    logger.success(f"Loaded profile: {profile['name']}")
-
-    log_stage_emoji("preparing", "Discovering markdown jobs...")
-
-    custom_input_path = profile.get("custom_input_path")
-    custom_output_path = profile.get("custom_output_path")
-
-    if custom_input_path or custom_output_path:
-        validate_custom_paths(
-            Path(custom_input_path) if custom_input_path else None,
-            Path(custom_output_path) if custom_output_path else None,
-        )
-
-    markdown_files = discover_markdown_jobs(context.input_dir, custom_input_path)
-    jobs = [parse_markdown_job(md_file) for md_file in markdown_files]
-    logger.success(f"Found {len(jobs)} markdown jobs")
-
-    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-    base_output_dir = (
-        Path(custom_output_path) if custom_output_path else context.output_dir
-    )
-    dir_name = f"{timestamp}_IMG-TO-VID"
-    run_dir = base_output_dir / dir_name
-    run_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Output: {run_dir}")
-
-    return async_client, jobs, profile, run_dir
+    """Setup processing environment and discover inputs (with custom path validation)."""
+    return _setup_processing_base(context, validate_custom=True)
 
 
 def _execute_video_batch_hybrid(

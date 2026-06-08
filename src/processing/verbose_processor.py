@@ -1,6 +1,5 @@
 """Enhanced processor with verbose terminal output."""
 
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Tuple, List
 
@@ -9,6 +8,7 @@ from loguru import logger
 from ..api.async_client_enhanced import AsyncReplicateClientEnhanced
 from ..utils.verbose_output import VerboseContext, log_stage_emoji
 from ..utils.epic_progress import VideoGenerationProgress, create_api_callback
+from ..utils.run_directory import create_timestamped_run_dir
 from ..utils.filename_utils import generate_video_filename
 from ..models.generation import GenerationContext
 from ..models.processing import ProcessingContext
@@ -42,6 +42,19 @@ def _setup_processing(
     context: ProcessingContext,
 ) -> Tuple[AsyncReplicateClientEnhanced, List[MarkdownJob], Dict[str, Any], Path]:
     """Setup processing environment and discover inputs."""
+    return _setup_processing_base(context, validate_custom=False)
+
+
+def _setup_processing_base(
+    context: ProcessingContext,
+    validate_custom: bool = False,
+) -> Tuple[AsyncReplicateClientEnhanced, List[MarkdownJob], Dict[str, Any], Path]:
+    """Setup processing environment and discover inputs.
+
+    Args:
+        context: ProcessingContext with all required paths and client
+        validate_custom: If True, validate custom input/output paths exist
+    """
     config = APIClientConfig(api_token=context.client.api_token, poll_interval=3)
     async_client = AsyncReplicateClientEnhanced(config=config)
 
@@ -53,20 +66,24 @@ def _setup_processing(
     log_stage_emoji("preparing", "Discovering markdown jobs...")
 
     custom_input_path = profile.get("custom_input_path")
+    custom_output_path = profile.get("custom_output_path")
+
+    if validate_custom and (custom_input_path or custom_output_path):
+        from ..utils.path_validator import validate_custom_paths
+
+        validate_custom_paths(
+            Path(custom_input_path) if custom_input_path else None,
+            Path(custom_output_path) if custom_output_path else None,
+        )
+
     markdown_files = discover_markdown_jobs(context.input_dir, custom_input_path)
     jobs = [parse_markdown_job(md_file) for md_file in markdown_files]
     logger.success(f"Found {len(jobs)} markdown jobs")
 
-    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-
-    custom_output_path = profile.get("custom_output_path")
     base_output_dir = (
         Path(custom_output_path) if custom_output_path else context.output_dir
     )
-
-    dir_name = f"{timestamp}_IMG-TO-VID"
-    run_dir = base_output_dir / dir_name
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = create_timestamped_run_dir(base_output_dir)
     logger.info(f"Output: {run_dir}")
 
     return async_client, jobs, profile, run_dir

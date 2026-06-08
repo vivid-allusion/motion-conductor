@@ -11,6 +11,7 @@ from src.processing.cost_calculator import calculate_video_cost
 from src.processing.duration_handler import process_duration
 from src.processing.processor import _enforce_single_profile
 from src.config.settings import INPUT_DIR, PROFILES_DIR, OUTPUT_DIR
+from src.utils.run_directory import create_timestamped_run_dir
 from src.models.triplet import MarkdownJob
 from loguru import logger
 
@@ -114,10 +115,7 @@ def generate_cost_report(
     Returns:
         Path to generated report
     """
-    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-    dir_name = f"{timestamp}_IMG-TO-VID"
-    output_dir = OUTPUT_DIR / dir_name
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = create_timestamped_run_dir(OUTPUT_DIR)
     report_path = output_dir / "cost_estimate.md"
 
     cost_per_video = total_cost / num_jobs if num_jobs else 0
