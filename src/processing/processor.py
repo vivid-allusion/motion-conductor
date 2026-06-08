@@ -1,4 +1,4 @@
-"""Video generation processor with matrix handling."""
+"""Video generation processor with batch handling."""
 
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
@@ -25,99 +25,32 @@ from .generation_logger import log_generation_start, log_generation_complete
 from ..utils.path_validator import validate_custom_paths
 
 
-def _create_run_directory(
-    output_dir: Path, active_profiles: List[Dict[str, Any]]
-) -> Path:
-    """Create timestamped output directory for this run."""
-    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-    dir_name = f"{timestamp}_IMG-TO-VID"
-    run_dir = output_dir / dir_name
-    run_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Output directory: {run_dir}")
-    return run_dir
-
-
-def _discover_jobs_for_profiles(
-    default_input_dir: Path, profiles: List[Dict[str, Any]]
-) -> Dict[str, List[MarkdownJob]]:
-    """
-    Discover markdown jobs for all profiles, handling custom input paths.
-
-    Args:
-        default_input_dir: Default input directory (USER-FILES/04.INPUT)
-        profiles: List of profile configurations
-
-    Returns:
-        Dictionary mapping input path (string) to list of MarkdownJob objects
-    """
-    # Collect unique input paths from all profiles
-    unique_paths: Dict[str, Path] = {str(default_input_dir): default_input_dir}
-
-    for profile in profiles:
-        custom_input = profile.get("custom_input_path")
-        if custom_input:
-            unique_paths[custom_input] = Path(custom_input)
-
-    # Discover jobs for each unique input path
-    jobs_by_path: Dict[str, List[MarkdownJob]] = {}
-
-    for path_str, path_obj in unique_paths.items():
-        try:
-            markdown_files = discover_markdown_jobs(
-                path_obj, path_str if path_str != str(default_input_dir) else None
-            )
-            jobs = [parse_markdown_job(md_file) for md_file in markdown_files]
-            jobs_by_path[path_str] = jobs
-            logger.info(f"Discovered {len(jobs)} jobs from {path_obj}")
-        except FileNotFoundError as e:
-            logger.warning(f"Input directory not found: {path_obj} - skipping")
-            jobs_by_path[path_str] = []
-
-    return jobs_by_path
-
-
-def _get_output_dir_for_profile(
-    default_output_dir: Path, profile: Dict[str, Any], run_timestamp: str
-) -> Path:
-    """
-    Get the output directory for a profile, creating subdirectory if needed.
-
-    Args:
-        default_output_dir: Default output directory (USER-FILES/05.OUTPUT)
-        profile: Profile configuration
-        run_timestamp: Timestamp for subdirectory naming
-
-    Returns:
-        Path to output directory for this profile
-    """
-    custom_output = profile.get("custom_output_path")
-
-    if custom_output:
-        output_dir = Path(custom_output)
-        # Create timestamped subdirectory within custom output path
-        profile_suffix = (
-            str(profile["name"]).strip().replace("/", "-").replace(" ", "_")
+def _enforce_single_profile(active_profiles: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Validate exactly one profile is active and return it."""
+    if len(active_profiles) == 0:
+        logger.error("No profiles found in 03.PROFILES/")
+        raise FileNotFoundError(
+            "No profiles found. Place exactly one profile YAML file in 03.PROFILES/"
         )
-        subdir_name = f"{run_timestamp}_{profile_suffix}"
-        output_dir = output_dir / subdir_name
-    else:
-        output_dir = default_output_dir
+    if len(active_profiles) > 1:
+        profile_names = [p["name"] for p in active_profiles]
+        logger.error(f"Multiple profiles found: {', '.join(profile_names)}")
+        raise Exception(
+            f"Multiple profiles found in 03.PROFILES/: {', '.join(profile_names)}. "
+            "Keep only one profile in the directory."
+        )
+    return active_profiles[0]
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir
 
-
-def _process_all_videos(
+def _process_jobs(
     client: ReplicateClient,
-    jobs_by_path: Dict[str, List[MarkdownJob]],
-    active_profiles: List[Dict[str, Any]],
-    default_output_dir: Path,
-    run_timestamp: str,
+    jobs: List[MarkdownJob],
+    profile: Dict[str, Any],
+    output_dir: Path,
     progress: Optional[Progress] = None,
 ) -> Tuple[int, float, List[Dict[str, Any]]]:
-    """Process all video generations in the matrix."""
-    # Calculate total operations
-    total = sum(len(jobs) for jobs in jobs_by_path.values()) * len(active_profiles)
+    """Process all video generations for a single profile."""
+    total = len(jobs)
     success_count = 0
     total_cost = 0.0
     all_adjustments = []
@@ -126,48 +59,31 @@ def _process_all_videos(
     if progress:
         task_id = progress.add_task("Generating videos", total=total)
 
-    for profile in active_profiles:
-        # Get jobs for this profile's input path
-        custom_input = profile.get("custom_input_path", str(default_output_dir))
-        jobs = jobs_by_path.get(custom_input, [])
-
-        if not jobs:
-            logger.info(
-                f"No jobs found for profile {profile['name']} (input: {custom_input})"
-            )
-            continue
-
-        # Get output directory for this profile
-        profile_output_dir = _get_output_dir_for_profile(
-            default_output_dir, profile, run_timestamp
+    for job in jobs:
+        video_cost, adjustment_info = _process_single_video(
+            client, job, profile, output_dir
         )
 
-        for job in jobs:
-            # Process single video
-            video_cost, adjustment_info = _process_single_video(
-                client, job, profile, profile_output_dir
-            )
+        if adjustment_info and adjustment_info.get("reason"):
+            adjustment_record = {
+                "markdown_file": job.markdown_file.name,
+                "profile": profile["name"],
+                **adjustment_info,
+            }
+            all_adjustments.append(adjustment_record)
 
-            if adjustment_info and adjustment_info.get("reason"):
-                adjustment_record = {
-                    "markdown_file": job.markdown_file.name,
-                    "profile": profile["name"],
-                    **adjustment_info,
-                }
-                all_adjustments.append(adjustment_record)
+        success_count += 1
+        total_cost += video_cost
 
-            success_count += 1
-            total_cost += video_cost
-
-            if progress and task_id is not None:
-                progress.advance(task_id)
+        if progress and task_id is not None:
+            progress.advance(task_id)
 
     return success_count, total_cost, all_adjustments
 
 
-def process_matrix(context: ProcessingContext) -> Dict[str, Any]:
+def process_batch(context: ProcessingContext) -> Dict[str, Any]:
     """
-    Process markdown job files with profile matrix for video generation.
+    Process markdown job files with a single profile for video generation.
 
     Args:
         context: ProcessingContext with all required paths and client
@@ -178,35 +94,54 @@ def process_matrix(context: ProcessingContext) -> Dict[str, Any]:
     Raises:
         Exception: On any processing failure (fail-fast)
     """
-    # 1. Load video profiles
+    # 1. Load and enforce single profile
     active_profiles = load_active_profiles(context.profiles_dir)
-    logger.info(f"Loaded {len(active_profiles)} video profiles")
+    logger.info(f"Loaded {len(active_profiles)} profile(s)")
+    profile = _enforce_single_profile(active_profiles)
+    logger.info(f"Using profile: {profile['name']}")
 
-    # 2. Validate custom paths for all profiles
-    for profile in active_profiles:
-        custom_input = profile.get("custom_input_path")
-        custom_output = profile.get("custom_output_path")
-        if custom_input or custom_output:
-            validate_custom_paths(
-                Path(custom_input) if custom_input else None,
-                Path(custom_output) if custom_output else None,
-            )
+    # 2. Validate custom paths for the profile
+    custom_input = profile.get("custom_input_path")
+    custom_output = profile.get("custom_output_path")
+    if custom_input or custom_output:
+        validate_custom_paths(
+            Path(custom_input) if custom_input else None,
+            Path(custom_output) if custom_output else None,
+        )
 
-    # 3. Discover markdown jobs for all profiles (handles custom input paths)
-    jobs_by_path = _discover_jobs_for_profiles(context.input_dir, active_profiles)
+    # 3. Discover markdown jobs
+    input_path = Path(custom_input) if custom_input else context.input_dir
+    markdown_files = discover_markdown_jobs(input_path)
+    jobs = [parse_markdown_job(md_file) for md_file in markdown_files]
+    logger.info(f"Discovered {len(jobs)} markdown jobs")
 
-    # Generate timestamp once for all output directories
+    if not jobs:
+        logger.warning("No markdown jobs found")
+        return {
+            "total": 0,
+            "success": 0,
+            "failed": 0,
+            "cost": 0.0,
+            "output_dir": context.output_dir,
+            "adjustments": [],
+        }
+
+    # 4. Determine output directory
     run_timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    if custom_output:
+        profile_suffix = (
+            str(profile["name"]).strip().replace("/", "-").replace(" ", "_")
+        )
+        output_dir = Path(custom_output) / f"{run_timestamp}_{profile_suffix}"
+    else:
+        output_dir = context.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Output directory: {output_dir}")
 
-    # 4. Process matrix sequentially
-    total = sum(len(jobs) for jobs in jobs_by_path.values()) * len(active_profiles)
-    success_count, total_cost, all_adjustments = _process_all_videos(
-        context.client,
-        jobs_by_path,
-        active_profiles,
-        context.output_dir,
-        run_timestamp,
-        context.progress,
+    # 5. Process jobs sequentially
+    total = len(jobs)
+    success_count, total_cost, all_adjustments = _process_jobs(
+        context.client, jobs, profile, output_dir, context.progress
     )
 
     return {
@@ -214,7 +149,7 @@ def process_matrix(context: ProcessingContext) -> Dict[str, Any]:
         "success": success_count,
         "failed": total - success_count,
         "cost": total_cost,
-        "output_dir": context.output_dir,
+        "output_dir": output_dir,
         "adjustments": all_adjustments,
     }
 
@@ -233,20 +168,16 @@ def _apply_prompt_modifications(prompt: str, profile: Dict[str, Any]) -> str:
     Raises:
         ValueError: If final prompt is empty after modifications
     """
-    # Strip whitespace from original prompt
     prompt = prompt.strip()
 
-    # Apply prefix if configured
     prefix = profile.get("prompt_prefix")
     if prefix and prefix.strip():
         prompt = f"{prefix.strip()} {prompt}" if prompt else prefix.strip()
 
-    # Apply suffix if configured
     suffix = profile.get("prompt_suffix")
     if suffix and suffix.strip():
         prompt = f"{prompt} {suffix.strip()}" if prompt else suffix.strip()
 
-    # Final validation and normalize whitespace
     prompt = " ".join(prompt.split())
     if not prompt:
         raise ValueError("Final prompt is empty after applying modifications")
@@ -272,30 +203,23 @@ def _process_single_video(
     Raises:
         Exception: On generation failure
     """
-    # Extract data from job
     prompt = job.prompt
     image_url = job.image_url
     num_frames = job.num_frames
 
-    # Apply prompt modifications (prefix/suffix) if configured in profile
     original_prompt = prompt
     prompt = _apply_prompt_modifications(prompt, profile)
 
-    # Generate processing identifier for logging
-    processing_name = f"{job.markdown_file.stem}_X_{profile['name']}"
-
+    processing_name = job.markdown_file.stem
     logger.info(f"Processing: {processing_name}")
 
     try:
-        # Prepare parameters with duration handling
         params, adjustment_info = _prepare_generation_params(profile, num_frames)
 
-        # Log generation start
         log_generation_start(
             processing_name, profile, prompt, image_url, num_frames, params
         )
 
-        # Generate and download video
         gen_request = VideoGenerationRequest(
             client=client,
             profile=profile,
@@ -307,16 +231,12 @@ def _process_single_video(
         )
         video_url, video_path = _generate_and_download_video(gen_request)
 
-        # Calculate cost based on actual video duration
         video_cost = calculate_cost_from_params(profile, params, num_frames)
 
-        # Create generation context with all data
-        # Note: We save the original prompt (without suffix) in context for documentation
-        # The suffix was already applied and used in the API call above
         context = GenerationContext(
             prompt_file=job.markdown_file,
-            image_url_file=job.markdown_file,  # Same file contains all data
-            num_frames_file=job.markdown_file,  # Same file contains all data
+            image_url_file=job.markdown_file,
+            num_frames_file=job.markdown_file,
             output_dir=run_dir,
             prompt=original_prompt,
             image_url=image_url,
@@ -329,18 +249,16 @@ def _process_single_video(
             adjustment_info=adjustment_info,
         )
 
-        # Save all documentation with video filename as prefix
         video_filename_stem = video_path.stem
         save_generation_files(context, video_filename_stem)
 
-        # Log completion
         log_generation_complete(video_path, video_cost)
 
         return video_cost, adjustment_info
 
     except Exception as e:
         logger.error(f"Failed: {job.markdown_file.name} + {profile['name']}: {e}")
-        raise  # Fail-fast philosophy
+        raise
 
 
 def _prepare_generation_params(
@@ -354,16 +272,13 @@ def _prepare_generation_params(
     """
     params = profile["parameters"].copy()
 
-    # Process duration based on profile configuration
     adjusted_duration, was_adjusted, adjustment_info = process_duration(
         num_frames, profile
     )
 
-    # Get the correct parameter name from profile
     param_name = get_duration_parameter_name(profile)
     params[param_name] = adjusted_duration
 
-    # Include fps if needed by the model
     if should_include_fps(profile):
         params["fps"] = profile["duration_config"]["fps"]
 
@@ -382,7 +297,6 @@ def _generate_and_download_video(request: VideoGenerationRequest) -> Tuple[str, 
     """
     from .video_downloader import download_video
 
-    # Generate video using Replicate API
     video_url = request.client.generate_video(
         model_name=request.profile["model_id"],
         image_url=request.image_url,
@@ -394,7 +308,6 @@ def _generate_and_download_video(request: VideoGenerationRequest) -> Tuple[str, 
     if not video_url:
         raise Exception(f"Failed to generate video for {request.markdown_file.name}")
 
-    # Download video to output directory
     video_filename = generate_video_filename(request.markdown_file.name)
     video_path = request.output_dir / video_filename
     download_video(video_url, video_path)

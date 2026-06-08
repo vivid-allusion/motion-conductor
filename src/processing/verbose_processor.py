@@ -1,39 +1,30 @@
 """Enhanced processor with verbose terminal output."""
 
-# Standard library imports
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 
-# Third-party imports
 from loguru import logger
 
-# Local imports - API
 from ..api.async_client_enhanced import AsyncReplicateClientEnhanced
-
-# Local imports - Utils
 from ..utils.verbose_output import VerboseContext, log_stage_emoji
 from ..utils.epic_progress import VideoGenerationProgress, create_api_callback
 from ..utils.filename_utils import generate_video_filename
-
-# Local imports - Models
 from ..models.generation import GenerationContext
 from ..models.processing import ProcessingContext
 from ..models.triplet import MarkdownJob
 from ..models.video_processing import VideoProcessingContext, APIClientConfig
-
-# Local imports - Processing
 from .cost_calculator import calculate_cost_from_params
 from .input_discovery import discover_markdown_jobs, parse_markdown_job
 from .output_generator import save_generation_files
 from .profile_loader import load_active_profiles
 from .video_downloader import download_video
-from .processor import _apply_prompt_modifications
+from .processor import _apply_prompt_modifications, _enforce_single_profile
 
 
-def process_matrix_verbose(context: ProcessingContext) -> Dict[str, Any]:
+def process_batch_verbose(context: ProcessingContext) -> Dict[str, Any]:
     """
-    Process video matrix with verbose terminal output.
+    Process video batch with verbose terminal output.
 
     Args:
         context: ProcessingContext with all required paths and client
@@ -42,50 +33,33 @@ def process_matrix_verbose(context: ProcessingContext) -> Dict[str, Any]:
         Dictionary with processing results
     """
     with VerboseContext() as verbose:
-        # Setup processing
-        async_client, jobs, active_profiles, run_dir = _setup_processing(context)
-
-        # Execute video batch
-        results = _execute_video_batch(async_client, jobs, active_profiles, run_dir)
-
-        # Generate summary
+        async_client, jobs, profile, run_dir = _setup_processing(context)
+        results = _execute_video_batch(async_client, jobs, profile, run_dir)
         return _generate_summary(results, run_dir)
 
 
 def _setup_processing(
     context: ProcessingContext,
-) -> Tuple[AsyncReplicateClientEnhanced, List[MarkdownJob], List, Path]:
+) -> Tuple[AsyncReplicateClientEnhanced, List[MarkdownJob], Dict[str, Any], Path]:
     """Setup processing environment and discover inputs."""
-    # Create enhanced async client with alive-progress animation
     config = APIClientConfig(api_token=context.client.api_token, poll_interval=3)
     async_client = AsyncReplicateClientEnhanced(config=config)
 
-    # Load profiles FIRST (they may specify custom input paths)
-    log_stage_emoji("preparing", "Loading video profiles...")
+    log_stage_emoji("preparing", "Loading video profile...")
     active_profiles = load_active_profiles(context.profiles_dir)
-    logger.success(f"Loaded {len(active_profiles)} profiles")
+    profile = _enforce_single_profile(active_profiles)
+    logger.success(f"Loaded profile: {profile['name']}")
 
-    # Discover markdown jobs using custom input path from profile if available
     log_stage_emoji("preparing", "Discovering markdown jobs...")
 
-    # Get custom input path from first profile (if exists)
-    # For verbose processor, we use the first profile's input path
-    custom_input_path = None
-    if active_profiles:
-        custom_input_path = active_profiles[0].get("custom_input_path")
-
+    custom_input_path = profile.get("custom_input_path")
     markdown_files = discover_markdown_jobs(context.input_dir, custom_input_path)
     jobs = [parse_markdown_job(md_file) for md_file in markdown_files]
     logger.success(f"Found {len(jobs)} markdown jobs")
 
-    # Create output directory - use custom output path from profile if available
     timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
 
-    # Determine base output directory
-    custom_output_path = None
-    if active_profiles:
-        custom_output_path = active_profiles[0].get("custom_output_path")
-
+    custom_output_path = profile.get("custom_output_path")
     base_output_dir = (
         Path(custom_output_path) if custom_output_path else context.output_dir
     )
@@ -93,98 +67,87 @@ def _setup_processing(
     dir_name = f"{timestamp}_IMG-TO-VID"
     run_dir = base_output_dir / dir_name
     run_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"📁 Output: {run_dir}")
+    logger.info(f"Output: {run_dir}")
 
-    return async_client, jobs, active_profiles, run_dir
+    return async_client, jobs, profile, run_dir
 
 
 def _execute_video_batch(
     async_client: AsyncReplicateClientEnhanced,
     jobs: List[MarkdownJob],
-    active_profiles: List,
+    profile: Dict[str, Any],
     run_dir: Path,
 ) -> Dict[str, Any]:
     """Execute batch video processing with epic progress tracking."""
-    total = len(jobs) * len(active_profiles)
+    total = len(jobs)
 
-    # Create epic progress bar
     epic_progress = VideoGenerationProgress()
 
     success_count = 0
     total_cost = 0.0
     all_adjustments = []
 
-    # Use epic progress with panel wrapper
-    with epic_progress.track_generation(total, title="Video Generation Matrix") as (
+    with epic_progress.track_generation(total, title="Video Generation Batch") as (
         progress,
         main_task,
     ):
         for job in jobs:
-            for profile in active_profiles:
-                video_name = f"{job.markdown_file.stem}_X_{profile['name']}"
+            video_name = job.markdown_file.stem
 
-                try:
-                    # Update progress with video name and phase
-                    epic_progress.update_status(
-                        progress,
-                        main_task,
-                        status="Starting...",
-                        video_name=video_name,
-                        phase="Initializing",
+            try:
+                epic_progress.update_status(
+                    progress,
+                    main_task,
+                    status="Starting...",
+                    video_name=video_name,
+                    phase="Initializing",
+                )
+
+                video_context = VideoProcessingContext(
+                    client=async_client,
+                    prompt_file=job.markdown_file,
+                    image_url_file=job.markdown_file,
+                    num_frames_file=job.markdown_file,
+                    profile=profile,
+                    run_dir=run_dir,
+                    progress=progress,
+                    task_id=main_task,
+                )
+
+                video_cost, adjustment_info = _process_video_verbose(
+                    video_context, job, epic_progress
+                )
+
+                success_count += 1
+                total_cost += video_cost
+
+                if adjustment_info and adjustment_info.get("reason"):
+                    all_adjustments.append(
+                        {
+                            "prompt_file": job.markdown_file.name,
+                            "profile": profile["name"],
+                            **adjustment_info,
+                        }
                     )
 
-                    # Create processing context
-                    video_context = VideoProcessingContext(
-                        client=async_client,
-                        prompt_file=job.markdown_file,
-                        image_url_file=job.markdown_file,
-                        num_frames_file=job.markdown_file,
-                        profile=profile,
-                        run_dir=run_dir,
-                        progress=progress,
-                        task_id=main_task,
-                    )
+                epic_progress.mark_success(
+                    progress, main_task, video_name, video_cost
+                )
 
-                    # Process single video with epic progress
-                    video_cost, adjustment_info = _process_video_verbose(
-                        video_context, job, epic_progress
-                    )
+                progress.advance(main_task)
 
-                    success_count += 1
-                    total_cost += video_cost
+                epic_progress.update_with_cost(
+                    progress,
+                    main_task,
+                    status="Complete",
+                    total_cost=total_cost,
+                    video_name=video_name,
+                )
 
-                    # Track adjustments
-                    if adjustment_info and adjustment_info.get("reason"):
-                        all_adjustments.append(
-                            {
-                                "prompt_file": job.markdown_file.name,
-                                "profile": profile["name"],
-                                **adjustment_info,
-                            }
-                        )
-
-                    # Mark as successful with cost
-                    epic_progress.mark_success(
-                        progress, main_task, video_name, video_cost
-                    )
-
-                    # Advance progress
-                    progress.advance(main_task)
-
-                    # Update total cost in status
-                    epic_progress.update_with_cost(
-                        progress,
-                        main_task,
-                        status="Complete",
-                        total_cost=total_cost,
-                        video_name=video_name,
-                    )
-
-                except Exception as e:
-                    # Mark error with epic progress
-                    epic_progress.mark_error(progress, main_task, video_name, str(e))
-                    logger.exception(e)
-                    raise  # Fail fast
+            except Exception as e:
+                epic_progress.mark_error(progress, main_task, video_name, str(e))
+                logger.exception(e)
+                raise
 
     return {
         "success_count": success_count,
@@ -200,9 +163,8 @@ def _generate_summary(results: Dict[str, Any], run_dir: Path) -> Dict[str, Any]:
     success_count = results["success_count"]
     total_cost = results["total_cost"]
 
-    # Final summary
-    logger.success(f"🎉 Completed {success_count}/{total} videos")
-    logger.info(f"💰 Total cost: ${total_cost:.2f}")
+    logger.success(f"Completed {success_count}/{total} videos")
+    logger.info(f"Total cost: ${total_cost:.2f}")
 
     return {
         "total": total,
@@ -220,22 +182,17 @@ def _process_video_verbose(
 ) -> Tuple[float, Dict[str, Any]]:
     """Process single video with verbose output and polling."""
 
-    # Extract data from job
     log_stage_emoji("preparing", f"Loading inputs for {job.markdown_file.stem}")
     prompt = job.prompt
     image_url = job.image_url
     num_frames = job.num_frames
 
-    # Apply prompt modifications (prefix/suffix) if configured
     prompt = _apply_prompt_modifications(prompt, context.profile)
 
-    # Generate processing identifier for logging
-    video_name = f"{job.markdown_file.stem}_X_{context.profile['name']}"
+    video_name = job.markdown_file.stem
 
-    # Prepare parameters
     params, adjustment_info = _prepare_params_verbose(context.profile, num_frames)
 
-    # Update progress: preparing phase
     epic_progress.update_status(
         context.progress,
         context.task_id,
@@ -244,18 +201,16 @@ def _process_video_verbose(
         phase="Preparing",
     )
 
-    # Log generation details
-    logger.info("═" * 60)
+    logger.info("=" * 60)
     log_stage_emoji("starting", f"Generating: {video_name}")
-    logger.info(f"📝 Prompt: {prompt[:80]}...")
-    logger.info(f"🖼️  Image: {image_url[:80]}...")
-    logger.info(f"⚙️  Model: {context.profile['model_id']}")
+    logger.info(f"Prompt: {prompt[:80]}...")
+    logger.info(f"Image: {image_url[:80]}...")
+    logger.info(f"Model: {context.profile['model_id']}")
     logger.info(
-        f"⏱️  Duration: {params.get('duration', params.get('num_frames', 'N/A'))}"
+        f"Duration: {params.get('duration', params.get('num_frames', 'N/A'))}"
     )
-    logger.info("═" * 60)
+    logger.info("=" * 60)
 
-    # Create API callback using epic progress helper
     progress_callback = create_api_callback(context.progress, context.task_id)
 
     video_url = context.client.generate_video_with_polling(
@@ -272,7 +227,6 @@ def _process_video_verbose(
         logger.error(error_msg)
         raise Exception(error_msg)
 
-    # Update progress: downloading phase
     epic_progress.update_status(
         context.progress,
         context.task_id,
@@ -285,10 +239,8 @@ def _process_video_verbose(
     video_path = context.run_dir / video_filename
     download_video(video_url, video_path)
 
-    # Calculate cost based on actual video duration
     video_cost = calculate_cost_from_params(context.profile, params, num_frames)
 
-    # Update progress: saving phase
     epic_progress.update_status(
         context.progress,
         context.task_id,
@@ -312,7 +264,6 @@ def _process_video_verbose(
         cost=video_cost,
         adjustment_info=adjustment_info,
     )
-    # Save all documentation with video filename as prefix
     video_filename_stem = video_path.stem
     save_generation_files(gen_context, video_filename_stem)
 
@@ -325,21 +276,18 @@ def _prepare_params_verbose(
     profile: Dict[str, Any], num_frames: int
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Prepare parameters with verbose logging of adjustments."""
-    # Reuse logic from processor module
     from .processor import _prepare_generation_params
 
     params, adjustment_info = _prepare_generation_params(profile, num_frames)
 
-    # Add verbose logging for adjustments
     if adjustment_info and adjustment_info.get("reason"):
-        logger.warning(f"⚠️ Duration adjusted: {adjustment_info['reason']}")
-        # Handle different adjustment_info structures for frames vs seconds
+        logger.warning(f"Duration adjusted: {adjustment_info['reason']}")
         if adjustment_info.get("type") == "seconds":
             logger.info(
                 f"  Original: {adjustment_info['original_seconds']}s ({adjustment_info['original_frames']} frames)"
             )
             logger.info(f"  Adjusted: {adjustment_info['adjusted_seconds']}s")
-        else:  # frames type
+        else:
             logger.info(f"  Original: {adjustment_info['original']} frames")
             logger.info(f"  Adjusted: {adjustment_info['adjusted']} frames")
 

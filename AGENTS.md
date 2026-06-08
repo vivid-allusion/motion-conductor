@@ -339,7 +339,7 @@ Successfully refactored the codebase with the following achievements:
 6. `src/processing/progress_display.py` - Progress display utilities
 
 **Major Refactorings:**
-- Split `process_matrix_verbose()` from 103 lines to 22 lines
+- Split `process_batch_verbose()` from 103 lines to 22 lines
 - Created VideoProcessingContext to reduce 8 parameters to 1
 - Extracted response parsing with strategy pattern in client.py
 - Implemented lazy loading for adjustments_reporter
@@ -451,7 +451,7 @@ Successfully refactored the codebase with the following achievements:
 
 5. **Implemented context objects**:
    - Created `ProcessingContext` in `src/models/processing.py`
-   - Reduced process_matrix() from 6 to 1 parameter
+   - Reduced process_batch() from 6 to 1 parameter
    - Better use of existing `GenerationContext`
 
 6. **Split output_generator.py** (was 217 lines) into specialized classes:
@@ -559,7 +559,7 @@ Successfully implemented verbose terminal output as default behavior:
 
 #### Files Exceeding Size Limits
 1. **processor.py** - 410 lines (exceeds 400 hard limit from code_quantity_memo.md)
-   - Action: Split into logical modules - extract path validation, job discovery, and matrix processing
+   - Action: Split into logical modules - extract path validation, job discovery, and batch processing
    - Priority: High
 
 2. **estimate_costs.py** - 252 lines (approaching 250 soft limit)
@@ -572,7 +572,7 @@ Successfully implemented verbose terminal output as default behavior:
 
 # Development Context Notes
 
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-06-08
 
 ---
 
@@ -584,64 +584,54 @@ Successfully implemented verbose terminal output as default behavior:
 - **Duration Handling**: Frame and second-based duration with auto-adjustment
 - **Cost Calculation**: Multi-model pricing (frame, second, prediction-based)
 - **Profile System**: YAML-based configuration with validation
-- **Matrix Processing**: Input × Profile processing pattern
+- **Batch Processing**: Single-profile, multi-input processing pattern
 - **Verbose Output**: Rich progress bars and emoji indicators
 - **File Organization**: Timestamped output directories, comprehensive reporting
 
-### 🔄 Known Technical Debt
+### 🔄 Known Technical Debt (Updated 2026-06-08)
 
-**Comprehensive Refactor Analysis & Execution (2026-01-08):**
-- **Code Health Score**: 7.5/10 → **8.5/10** ✅ (Target)
-- **Full Report**: `USER-FILES/07.TEMP/260109_001151_cleanup_report.md`
-- **Completion Summary**: `REFACTOR_COMPLETION_SUMMARY.md`
+**Code Health Score**: ~7.5/10
 
-**✅ COMPLETED - Major Refactoring & Cleanup (2026-01-09):**
+**🟡 Outstanding Issues (4 items):**
 
-**1. Dead Code Elimination (Phase 1):**
-- Deleted `src/processing/base_processor.py` (58 lines, unused)
-- Deleted `src/api/polling_handler.py` (46 lines, unused)
-- **Impact**: -104 lines of dead code removed.
+1. **Dead File**: `src/processing/progress_display.py` (54 lines) — never imported anywhere. Equivalent functionality lives in `epic_progress.py` and `hybrid_progress.py`.
 
-**2. Async Client Consolidation (Phase 2):**
-- Created `src/api/base_async_client.py` abstract base class.
-- Refactored `AsyncReplicateClient` and `AsyncReplicateClientEnhanced` to inherit from base.
-- Consolidated duplicate methods: `_extract_output_url`, `_extract_progress`, `_log_status_change`, `_create_prediction_with_retry`.
-- **Impact**: Significantly reduced duplication in API clients (~180 lines consolidated).
+2. **Unused Imports**: 8 unused imports across 6 files (`APIClientConfig` ×2, `Path`, `Optional` ×2, `Dict`/`Any`, `os`).
 
-**3. Shared Utility Extraction (Phase 3 - Partial):**
-- **Cost Calculation**: Extracted `calculate_cost_from_params` to `src/processing/cost_calculator.py`.
-- **Generation Context**: Added `GenerationContext.from_job` factory method to simplify instantiation.
-- **Refactoring**: Updated `processor.py` and `verbose_processor.py` to use these new utilities.
+3. **Dead Method**: `GenerationContext.from_job()` in `src/models/generation.py:29` — defined but never called. All 3 processors use direct constructor calls.
 
-**Impact**: ~190 lines removed, 10 functions refactored, all Phase 1 tasks complete
+4. **Feature Gap**: `hybrid_processor.py` missing custom input/output path support (present in `verbose_processor.py` and `processor.py`). Missing `validate_custom_paths()` call too.
 
-**🔄 DEFERRED - Remaining Cleanup (Phase 3 - Continued):**
-4. **Hybrid Processor Refactor**: Update `hybrid_processor.py` to use `calculate_cost_from_params` and `GenerationContext.from_job`.
-5. **Setup Processing Extraction**: Extract `setup_async_processing` shared function.
-6. **Directory Creation**: Extract `create_run_directory` and `create_video_directory` to `file_manager.py`.
-7. **Exception Handling**: Create `handle_pipeline_exceptions` decorator.
-8. **Adjustment Tracking**: Create `create_adjustment_record` helper.
+**Current File Size (2026-06-08 review):**
 
-**File Size Violations (9 files over 250-line soft limit):**
-1. `src/utils/epic_progress.py` (390 lines) - Progress bar utilities
-2. `src/api/async_client_enhanced.py` (362 lines) - Enhanced async client
-3. `src/processing/verbose_processor.py` (350 lines) - Verbose processing
-4. `src/utils/hybrid_progress.py` (334 lines) - Hybrid progress display
-5. `src/processing/processor.py` (326 lines) - Main processor
-6. `src/processing/hybrid_processor.py` (284 lines) - Hybrid processor
-7. `src/api/async_client.py` (257 lines) - Async client
-8. `src/estimate_costs.py` (252 lines) - Cost estimation
+| Files over 250-line soft limit | Lines | Justification |
+|------|-------|---------------|
+| `src/utils/epic_progress.py` | 322 | Single cohesive progress bar class |
+| `src/processing/processor.py` | 315 | Core processing pipeline (was 402) |
+| `src/processing/verbose_processor.py` | 294 | Async processing + verbose logging |
+| `src/utils/hybrid_progress.py` | 271 | Hybrid progress bar class |
 
-**Note**: All files are under 400-line hard limit ✓
-
-**Test Coverage:**
-- Current: 4 test modules (test_cost_calculator, test_duration_handler, test_models, test_filename_utils)
-- Missing tests: processor, profile_loader, input_discovery, output_generator
-- No unit tests for prompt prefix/suffix feature (tested manually, 7/7 edge cases passed)
+**Note**: All files are under 400-line hard limit ✓ (down from 9 over soft limit to 4)
 
 ---
 
 ## 🎯 Recent Sessions
+
+### Session 6: Single-Profile Processing (2026-01-09)
+
+**Completed:**
+1. ✅ **Profile Enforcement**: Added `_enforce_single_profile()` validator in `processor.py`. Exactly one profile required in `03.PROFILES/`; 0 or >1 profiles fail fast with clear error messages.
+2. ✅ **Processor Refactoring**: Removed outer profile loop from all 3 processors (sync, verbose, hybrid). Simplified job discovery and output directory logic.
+3. ✅ **Cost Estimation**: Refactored `estimate_costs.py` from multi-profile comparison to single-profile calculation.
+4. ✅ **Naming Cleanup**: Renamed all `process_matrix*` functions to `process_batch*`. Removed "matrix" terminology from all source files, docstrings, log messages, and progress titles.
+5. ✅ **Entry Points**: Updated `main.py`, `main_verbose.py`, `main_hybrid.py` imports and log messages.
+
+**Impact**:
+- **Code Quality**: Simplified architecture — each run uses one profile against all inputs.
+- **Files Modified**: 9 files (3 processors, 3 entry points, cost estimation, models, AGENTS.md)
+- **Lines Removed**: ~150 lines removed (eliminated `_discover_jobs_for_profiles`, `_get_output_dir_for_profile`, `_create_run_directory`)
+- **Lines Added**: ~50 lines (`_enforce_single_profile` validator)
+- **Risk**: Low — profile_loader, profile_validator, API client, input discovery, and output generators are untouched.
 
 ### Session 5: Codebase Cleanup Execution (2026-01-09)
 

@@ -9,7 +9,7 @@ from ..api.client import ReplicateClient
 
 @dataclass
 class ProcessingContext:
-    """Context for matrix processing operations."""
+    """Context for batch processing operations."""
 
     client: ReplicateClient
     input_dir: Path

@@ -5,7 +5,7 @@ from loguru import logger
 
 from .api.client import ReplicateClient
 from .config.settings import INPUT_DIR, PROFILES_DIR, OUTPUT_DIR
-from .processing.verbose_processor import process_matrix_verbose
+from .processing.verbose_processor import process_batch_verbose
 from .models.processing import ProcessingContext
 from .models.video_processing import APIClientConfig
 from .output.reporter import create_success_report, create_cost_report
@@ -21,44 +21,36 @@ from .exceptions import VideoGenerationError, AuthenticationError, InputValidati
 def main() -> int:
     """Main entry point with verbose terminal output."""
 
-    # Setup dual logging (file + console)
     setup_dual_logging(enable_verbose=True)
 
     try:
-        # Validate environment
         log_stage_emoji("starting", "Validating environment and authentication...")
         api_key = validate_environment()
         logger.success("Authentication successful")
 
-        # Validate input directories
         log_stage_emoji("preparing", "Validating input directories...")
         validate_input_directories(INPUT_DIR, PROFILES_DIR)
         logger.success("Input directory and profiles validated")
 
-        # Initialize client with config
         config = APIClientConfig(api_token=api_key)
         client = ReplicateClient(config=config)
 
-        # Create processing context
         context = ProcessingContext(
             client=client,
             input_dir=INPUT_DIR,
             profiles_dir=PROFILES_DIR,
             output_dir=OUTPUT_DIR,
-            progress=None,  # Verbose processor creates its own
+            progress=None,
         )
 
-        # Process with verbose output
-        log_stage_emoji("processing", "Starting video generation matrix...")
-        results = process_matrix_verbose(context)
+        log_stage_emoji("processing", "Starting video generation batch...")
+        results = process_batch_verbose(context)
 
-        # Generate reports
         log_stage_emoji("saving", "Generating reports...")
         output_dir = results["output_dir"]
         create_success_report(results, output_dir)
         create_cost_report(results, output_dir)
 
-        # Create adjustments report if needed (lazy load)
         if results.get("adjustments"):
             from .reporting.adjustments_reporter import create_adjustments_report
 
@@ -67,22 +59,20 @@ def main() -> int:
                 output_dir=output_dir,
                 total_processed=results["total"],
             )
-            logger.info(f"⚠️ {len(results['adjustments'])} duration adjustments made")
+            logger.info(f"{len(results['adjustments'])} duration adjustments made")
 
-        # Archive and cleanup log files
         log_stage_emoji("saving", "Archiving log files...")
         try:
             archive_and_cleanup_logs(output_dir)
         except Exception as e:
             logger.warning(f"Failed to cleanup logs (non-fatal): {e}")
 
-        # Final summary
-        logger.success("═" * 60)
+        logger.success("=" * 60)
         log_stage_emoji("complete", f"All processing complete!")
-        logger.success(f"✅ Success: {results['success']}/{results['total']} videos")
-        logger.info(f"💰 Total cost: ${results['cost']:.2f}")
-        logger.info(f"📁 Output: {output_dir}")
-        logger.success("═" * 60)
+        logger.success(f"Success: {results['success']}/{results['total']} videos")
+        logger.info(f"Total cost: ${results['cost']:.2f}")
+        logger.info(f"Output: {output_dir}")
+        logger.success("=" * 60)
 
         return 0
 

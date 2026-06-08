@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from .utils.epic_progress import ProgressBar
 from .api.client import ReplicateClient
 from .config.settings import INPUT_DIR, PROFILES_DIR, OUTPUT_DIR
-from .processing.processor import process_matrix
+from .processing.processor import process_batch
 from .processing.profile_loader import load_active_profiles
 from .models.processing import ProcessingContext
 from .models.video_processing import APIClientConfig
@@ -22,11 +22,9 @@ from .exceptions import VideoGenerationError, AuthenticationError, InputValidati
 from .utils.verbose_output import show_project_header
 
 
-def _process_and_report(
-    client: ReplicateClient, active_profiles: List[Dict[str, Any]]
-) -> Optional[Dict[str, Any]]:
+def _process_and_report(client: ReplicateClient) -> Optional[Dict[str, Any]]:
     """Execute processing and generate reports."""
-    logger.info("Starting video generation matrix processing")
+    logger.info("Starting video generation batch processing")
 
     with ProgressBar() as progress:
         context = ProcessingContext(
@@ -36,7 +34,7 @@ def _process_and_report(
             output_dir=OUTPUT_DIR,
             progress=progress,
         )
-        return process_matrix(context)
+        return process_batch(context)
 
 
 def _extract_project_name(profiles: List[Dict[str, Any]]) -> str | None:
@@ -62,14 +60,13 @@ def main() -> int:
         active_profiles = load_active_profiles(PROFILES_DIR)
         project_name = _extract_project_name(active_profiles)
 
-        # Setup logging after we know the project name
         setup_logging(project_name=project_name)
         show_project_header(active_profiles)
 
         config = APIClientConfig(api_token=api_key)
         client = ReplicateClient(config=config)
 
-        results = _process_and_report(client, active_profiles)
+        results = _process_and_report(client)
         if results is None:
             return 1
 
@@ -86,7 +83,7 @@ def main() -> int:
                 total_processed=results["total"],
             )
 
-        logger.success(f"✅ Completed: {results['success']}/{results['total']} videos")
+        logger.success(f"Completed: {results['success']}/{results['total']} videos")
         logger.info(f"Total cost: ${results['cost']:.2f}")
         logger.info(f"Output directory: {output_dir}")
 
