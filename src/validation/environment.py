@@ -23,10 +23,11 @@ def validate_environment() -> str:
 
     api_key = authenticate()
     if not api_key:
-        logger.error("No API key found via 1Password")
+        logger.error("No API key found")
         raise AuthenticationError(
-            "No API key found. Please ensure USER-FILES/01.CONFIG/auth*.yaml exists "
-            "with valid 1Password credentials."
+            "No API key found. Please set REPLICATE_API_TOKEN as an env var, "
+            "store it via `pass insert openreel/replicate_api_token`, "
+            "or add it to a .env file."
         )
 
     return api_key

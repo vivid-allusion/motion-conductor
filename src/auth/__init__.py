@@ -1,44 +1,62 @@
-"""Authentication module - prioritizes .env over 1Password."""
-from typing import Optional
-from .env import get_replicate_api_token_from_env
-from .op_auth import get_replicate_api_token_from_op, AuthError
+"""Authentication module — 4-tier env var hierarchy.
 
-__all__ = ['authenticate', 'AuthError']
+Priority:
+    1. Already-set env var (injected by OpenReel TUI or cloud wrapper)
+    2. pass show openreel/<key> (GPG-encrypted, optional)
+    3. .env file in project root (standalone mode)
+    4. Hard exit if no key found
+"""
+
+import os
+import sys
+import subprocess
+from pathlib import Path
+from typing import Optional
+from loguru import logger
+from dotenv import load_dotenv
+
+REQUIRED_KEY = "REPLICATE_API_TOKEN"
+
+
+def _try_pass(key_name: str) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["pass", "show", f"openreel/{key_name}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            logger.info("Retrieved {} from pass", key_name)
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return None
 
 
 def authenticate(config_name: Optional[str] = None) -> str:
-    """
-    Authenticate with Replicate API - .env priority over 1Password.
-
-    Priority:
-    1. REPLICATE_API_TOKEN from .env file or environment
-    2. 1Password CLI fallback
-
-    Args:
-        config_name: Optional specific auth config filename (e.g., 'auth_bites.yaml')
-                    If None, tries all auth*.yml/.yaml files in order
-
-    Returns:
-        API token string
-
-    Raises:
-        ValueError: If no API token can be found
-        AuthError: If 1Password authentication fails
-    """
-    api_token = get_replicate_api_token_from_env()
+    api_token = os.getenv(REQUIRED_KEY)
     if api_token:
+        logger.info("Using {} from environment", REQUIRED_KEY)
         return api_token
-    
-    try:
-        api_token = get_replicate_api_token_from_op(config_name)
+
+    api_token = _try_pass(REQUIRED_KEY.lower())
+    if api_token:
+        os.environ[REQUIRED_KEY] = api_token
+        return api_token
+
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+        api_token = os.getenv(REQUIRED_KEY)
         if api_token:
+            logger.info("Loaded {} from {}", REQUIRED_KEY, env_path)
             return api_token
-    except (AuthError, FileNotFoundError) as e:
-        from loguru import logger
-        logger.error(f"1Password authentication error: {e}")
-        raise
-    
-    raise ValueError(
-        "No valid Replicate token found. Ensure a .env file exists with REPLICATE_API_TOKEN "
-        "or a USER-FILES/01.CONFIG/auth*.yaml exists with 1Password config."
+
+    sys.exit(
+        "ERROR: REPLICATE_API_TOKEN not set.\n"
+        "  - Set as env var  (export REPLICATE_API_TOKEN=...)\n"
+        "  - Store in pass   (pass insert openreel/replicate_api_token)\n"
+        "  - Add to .env     (echo REPLICATE_API_TOKEN=... > .env)"
     )
+
+
+__all__ = ["authenticate"]
