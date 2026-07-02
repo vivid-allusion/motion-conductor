@@ -45,7 +45,7 @@ project: "WALTZ WITH BASHIR"
 # Custom paths (OPTIONAL)
 # Override default USER-FILES/04.INPUT and USER-FILES/05.OUTPUT directories
 paths:
-  input: "/Users/ruben/Nextcloud/01 - PROJECTS/251230_WBT/02_GENERATIONS/@INPUT(img-to-vid)"
+  input: "/Users/ruben/Nextcloud/01 - PROJECTS/251230_WBT/02_GENERATIONS/@INPUT(motion)"
   output: "/Users/ruben/Downloads/test"
 
 # Duration configuration (REQUIRED)
