@@ -26,7 +26,7 @@ def validate_environment() -> str:
         logger.error("No API key found")
         raise AuthenticationError(
             "No API key found. Please set REPLICATE_API_TOKEN as an env var, "
-            "store it via `pass insert openreel/replicate_api_token`, "
+            "store it via `pass insert studiolot/replicate_api_token`, "
             "or add it to a .env file."
         )
 
