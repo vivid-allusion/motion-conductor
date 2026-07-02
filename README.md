@@ -1,4 +1,4 @@
-# motion — Single Image to Video Generator
+# Vivid Allusion Motion
 
 Generate videos from a **single start image** plus a motion prompt using the Replicate API. Supports prompt prefix/suffix modifications and multiple terminal output modes.
 
