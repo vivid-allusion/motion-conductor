@@ -1,5 +1,5 @@
 """
-Image-to-video generation tool using Replicate API.
+Image-to-video generation for the Motion Conductor tool using Replicate API.
 
 This package provides functionality for:
 - Converting static images to animated videos using AI models

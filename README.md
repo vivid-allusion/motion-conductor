@@ -1,4 +1,4 @@
-# Vivid Allusion Motion
+# Vivid Allusion Motion Conductor
 
 Generate videos from a **single start image** plus a motion prompt using the Replicate API. Supports prompt prefix/suffix modifications and multiple terminal output modes.
 
