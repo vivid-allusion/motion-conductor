@@ -1,1 +1,0 @@
-"""Video processing pipeline and utilities."""
