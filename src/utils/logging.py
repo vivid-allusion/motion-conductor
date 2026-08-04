@@ -42,7 +42,7 @@ def setup_logging(
         sanitized_name = _sanitize_for_filename(project_name)
         log_filename = f"{sanitized_name}_wrapper_{{time}}.log"
     else:
-        log_filename = "replicate_wrapper_{time}.log"
+        log_filename = "motion_conductor_{time}.log"
 
     logger.add(
         log_dir / log_filename,

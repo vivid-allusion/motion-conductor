@@ -4,7 +4,7 @@ Priority:
     1. Already-set env var (injected by OpenReel TUI or cloud wrapper)
     2. pass show studiolot/<key> (GPG-encrypted, optional)
     3. .env file in project root (standalone mode)
-    4. Hard exit if no key found
+    4. Raise AuthenticationError if no key found
 """
 
 import os
@@ -16,6 +16,10 @@ from loguru import logger
 from dotenv import load_dotenv
 
 REQUIRED_KEY = "REPLICATE_API_TOKEN"
+
+
+class AuthenticationError(Exception):
+    """Raised when no API token can be found from any source."""
 
 
 def _try_pass(key_name: str) -> Optional[str]:
@@ -51,7 +55,7 @@ def authenticate(config_name: Optional[str] = None) -> str:
             logger.info("Loaded {} from {}", REQUIRED_KEY, env_path)
             return api_token
 
-    sys.exit(
+    raise AuthenticationError(
         "ERROR: REPLICATE_API_TOKEN not set.\n"
         "  - Set as env var  (export REPLICATE_API_TOKEN=...)\n"
         "  - Store in pass   (pass insert studiolot/replicate_api_token)\n"
@@ -59,4 +63,4 @@ def authenticate(config_name: Optional[str] = None) -> str:
     )
 
 
-__all__ = ["authenticate"]
+__all__ = ["authenticate", "AuthenticationError"]

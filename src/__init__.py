@@ -1,10 +1,5 @@
-"""
-Image-to-video generation for the Motion Conductor tool using Replicate API.
+"""Motion Conductor — Engine-based video generation vehicle.
 
-This package provides functionality for:
-- Converting static images to animated videos using AI models
-- Batch processing with configurable profiles  
-- Comprehensive cost tracking and reporting
-- Flexible duration handling (frame-based and time-based)
-- Structured output with documentation and logs
+Loads discovery-configured Engines via the Engine interface to generate
+video from markdown bullet files and profile YAML configuration.
 """
