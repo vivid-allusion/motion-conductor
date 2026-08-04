@@ -42,12 +42,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--no-progress",
-        action="store_true",
-        help="Disable progress bar",
-    )
-
-    parser.add_argument(
         "--install-default-engine",
         type=str,
         default=None,
