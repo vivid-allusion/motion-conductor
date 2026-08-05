@@ -11,7 +11,7 @@ from typing import Any
 
 from loguru import logger
 
-from ..engine_loader import load_engine
+from ..engine_loader import EngineLoadContext, load_engine
 
 ENGINE_INSTALL_MESSAGE = (
     "To install an Engine:\n"
@@ -126,7 +126,7 @@ def build_inputs(
 
 def create_engine(ctx: PipelineContext):
     """Load engine with standard on_progress logger callback."""
-    return load_engine(
+    engine_ctx = EngineLoadContext(
         platform=ctx.platform,
         search_paths=ctx.search_paths,
         profile=ctx.profile,
@@ -134,6 +134,7 @@ def create_engine(ctx: PipelineContext):
         api_key=ctx.api_key,
         on_progress=lambda msg: logger.info(msg),
     )
+    return load_engine(engine_ctx)
 
 
 def summarize_results(results: list[Any]) -> int:
