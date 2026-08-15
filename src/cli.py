@@ -30,6 +30,13 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--platform",
+        type=str,
+        default=None,
+        help="Engine platform (overrides profile YAML)",
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Test without making API calls",

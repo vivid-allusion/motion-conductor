@@ -73,7 +73,8 @@ def _run_studiolot(args) -> int:
         return 1
 
     profile = load_profile_studiolot(profile_path)
-    platform = profile.get("platform") or "replicate"
+    platform = args.platform or profile.get("platform") or "replicate"
+    profile["platform"] = platform
 
     input_dir = Path(args.input_dir) if args.input_dir else Path(".")
     bullets = read_bullets(input_dir)
@@ -84,7 +85,7 @@ def _run_studiolot(args) -> int:
             logger.info(f"  {b['path'].name}: {b['prompt'][:60]}...")
         return 0
 
-    api_key = authenticate()
+    api_key = authenticate(platform)
 
     project_engines = find_project_engines_dir(output_dir)
     if not project_engines:
@@ -106,7 +107,7 @@ def _run_studiolot(args) -> int:
 
 def _run_standalone(args) -> int:
     profile = load_profile_standalone()
-    platform = profile.get("platform") or "replicate"
+    platform = args.platform or profile.get("platform") or "replicate"
 
     auto_install = args.install_default_engine or os.environ.get(
         "STUDIOLOT_AUTO_INSTALL_ENGINE"
@@ -126,7 +127,7 @@ def _run_standalone(args) -> int:
         logger.info(f"DRY RUN — would process {len(bullets)} bullet(s)")
         return 0
 
-    api_key = authenticate()
+    api_key = authenticate(platform)
 
     ctx = PipelineContext(
         platform=platform,
