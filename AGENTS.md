@@ -323,6 +323,12 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   `main_simple.py` and holds at the 400 hard limit
 - Vendored `ENGINES/engine-replicate` clone is stale (pre-Part-2) — needs
   `git pull` once the engine-replicate `mc-fc-parity` work is pushed
+- **Unknown-slot parse errors degrade softly** (found in the Part 3 dry-run
+  smoke): `read_bullets()` logs a warning but still appends the bullet
+  without its references — the bullet silently runs as text-to-video.
+  Q9's settled intent was "error the bullet, fail loud". Fix when MC src/
+  is next in scope: on `ValueError` from `parse_bullet`, reject the bullet
+  (skip append) so the run fails instead of generating the wrong video.
 
 ### Resolved (Part 3)
 - Endpoint TOML `[general]` was inert metadata: now captured onto bindings,
