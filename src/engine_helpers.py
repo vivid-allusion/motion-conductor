@@ -1,6 +1,7 @@
 """Engine discovery, installation, input construction, and loading."""
 
 import importlib
+import inspect
 import subprocess
 import sys
 from pathlib import Path
@@ -103,7 +104,8 @@ def build_inputs(
     """Construct InputFile objects using the Engine's datatype.
 
     metadata carries {duration, fps} per VEHICLE_CONTRACT.md §4d, plus
-    relative_dir so outputs mirror the input folder structure.
+    relative_dir so outputs mirror the input folder structure. The bullet's
+    raw `duration:` (verbatim) wins over `frames:`/profile default.
     """
     try:
         pkg = importlib.import_module(f"engine_{platform}")
@@ -118,19 +120,36 @@ def build_inputs(
     fps = int(params.get("fps", 24))
     profile_duration = float(params.get("duration", 5.0))
 
-    return [
-        InputFile(
-            path=b["path"],
-            prompt=b["prompt"],
-            reference_urls=b["reference_urls"],
-            metadata={
-                "duration": b["frames"] / fps if b["frames"] else profile_duration,
+    accepts_references = "references" in inspect.signature(InputFile.__init__).parameters
+    if not accepts_references and any(b.get("references") for b in bullets):
+        logger.warning(
+            f"Engine '{platform}' does not support named reference slots — "
+            "slot URLs in the bullets are ignored"
+        )
+
+    inputs = []
+    for b in bullets:
+        raw_duration = b.get("duration")
+        if raw_duration is not None:
+            duration = raw_duration
+        elif b["frames"]:
+            duration = b["frames"] / fps
+        else:
+            duration = profile_duration
+        kwargs: dict[str, Any] = {
+            "path": b["path"],
+            "prompt": b["prompt"],
+            "reference_urls": b["reference_urls"],
+            "metadata": {
+                "duration": duration,
                 "fps": fps,
                 "relative_dir": _relative_dir(b["path"].parent, input_root),
             },
-        )
-        for b in bullets
-    ]
+        }
+        if accepts_references:
+            kwargs["references"] = b.get("references") or {}
+        inputs.append(InputFile(**kwargs))
+    return inputs
 
 
 def _relative_dir(dir_path: Path, input_root: Path | None) -> str:

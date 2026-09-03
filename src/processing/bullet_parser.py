@@ -2,12 +2,14 @@
 
 Parses bullet .md files and extracts:
 - Text prompt from the first non-empty, non-image line
-- Reference image URLs from markdown ![alt](URL) syntax
-- Optional frame count from a `frames: N` line
+- Reference URLs from markdown ![alt](URL) syntax — empty alt feeds the
+  primary slot, a named alt feeds the named slot (when declared)
+- Optional frame count from a `frames: N` line (deprecated, converted via fps)
+- Optional raw duration from a `duration: <int|token>` line (verbatim)
 
 Format:
     Line 1: Text prompt
-    Lines 2+: ![alt](URL) and/or frames: N
+    Lines 2+: ![alt](URL), frames: N and/or duration: <value>
 """
 
 import re
@@ -24,8 +26,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 _FRAMES_RE = re.compile(r"^frames:\s*(\d+)", re.IGNORECASE)
+_DURATION_RE = re.compile(r"^duration:\s*(\S+)", re.IGNORECASE)
 
-_IMG_URL_PATTERN = re.compile(r"!\[.*?\]\((https?://[^\)]+)\)")
+_IMG_URL_PATTERN = re.compile(r"!\[([^\]]*)\]\((https?://[^\)]+)\)")
 _LINK_WITHOUT_BANG = re.compile(r"(?<!!)\[.*?\]\((https?://[^\)]+)\)")
 _BANG_SPACE_PATTERN = re.compile(r"! +\[.*?\]\(.*?\)")
 _PAREN_SPACE_PATTERN = re.compile(r"!\[.*?\] +\(.*?\)")
@@ -67,19 +70,53 @@ def _check_line(line: str, lineno: int, warn: "Callable[[str], None] | None") ->
         )
 
 
+def _coerce_duration(raw: str) -> int | str:
+    """Return int for numeric tokens, the raw string otherwise (verbatim)."""
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+def _route_image(
+    alt: str,
+    url: str,
+    urls: list[str],
+    references: dict[str, list[str]],
+    declared_slots: list[str] | None,
+) -> None:
+    """Route a URL: empty alt or no slot schema → primary; else named slot.
+
+    Raises:
+        ValueError: alt text not declared in the profile's slot schema.
+    """
+    alt = alt.strip()
+    if not alt or declared_slots is None:
+        urls.append(url)
+        return
+    if alt not in declared_slots:
+        raise ValueError(
+            f"Unknown reference slot '{alt}' — declared slots: {declared_slots}"
+        )
+    references.setdefault(alt, []).append(url)
+
+
 def parse_bullet(
     markdown_content: str,
     warn: "Callable[[str], None] | None" = None,
-) -> tuple[str, list[str], int | None]:
-    """Parse a .md bullet, returning (prompt, urls, frames) in one pass.
+    declared_slots: list[str] | None = None,
+) -> tuple[str, list[str], int | None, int | str | None, dict[str, list[str]]]:
+    """Parse a .md bullet, returning (prompt, urls, frames, duration, references).
 
     Raises:
-        ValueError: If no prompt found.
+        ValueError: If no prompt found or an alt is not a declared slot.
     """
     lines = markdown_content.split("\n")
     prompt = ""
     urls: list[str] = []
     frames: int | None = None
+    duration: int | str | None = None
+    references: dict[str, list[str]] = {}
 
     seen_prompt = False
     for lineno, line in enumerate(lines, start=1):
@@ -90,7 +127,9 @@ def parse_bullet(
         if not seen_prompt:
             first_match = _IMG_URL_PATTERN.search(line)
             if first_match:
-                urls.append(first_match.group(1))
+                _route_image(
+                    first_match.group(1), first_match.group(2), urls, references, declared_slots
+                )
                 continue
             prompt = stripped
             seen_prompt = True
@@ -98,17 +137,20 @@ def parse_bullet(
 
         match = _IMG_URL_PATTERN.search(line)
         if match:
-            urls.append(match.group(1))
+            _route_image(match.group(1), match.group(2), urls, references, declared_slots)
         elif _FRAMES_RE.match(stripped):
             if frames is None:
                 frames = int(_FRAMES_RE.match(stripped).group(1))
+        elif (duration_match := _DURATION_RE.match(stripped)):
+            if duration is None:
+                duration = _coerce_duration(duration_match.group(1))
         else:
             _check_line(line, lineno, warn)
 
     if not prompt:
         raise ValueError("No prompt text found in markdown")
 
-    return prompt, urls, frames
+    return prompt, urls, frames, duration, references
 
 
 def validate_image_urls(urls: list[str], timeout: float = 5.0) -> tuple[list[str], list[str]]:
@@ -133,9 +175,15 @@ def validate_image_urls(urls: list[str], timeout: float = 5.0) -> tuple[list[str
     return valid, invalid
 
 
-def read_bullets(input_dir: Path, dry_run: bool = False) -> list[Bullet]:
-    """Read .md bullets from input_dir, extract prompt + reference URLs + frames.
+def read_bullets(
+    input_dir: Path,
+    dry_run: bool = False,
+    declared_slots: list[str] | None = None,
+) -> list[Bullet]:
+    """Read .md bullets from input_dir, extract prompt + URLs + frames + duration.
 
+    declared_slots (from the profile's `slots:` key) enables named-slot
+    routing; without it every alt falls back to the primary slot.
     Returns [] (with a warning) when the directory holds no .md files.
     """
     md_files = sorted(input_dir.rglob("*.md"))
@@ -145,8 +193,12 @@ def read_bullets(input_dir: Path, dry_run: bool = False) -> list[Bullet]:
         prompt = ""
         urls: list[str] = []
         frames: int | None = None
+        duration: int | str | None = None
+        references: dict[str, list[str]] = {}
         try:
-            prompt, urls, frames = parse_bullet(content, warn=logger.warning)
+            prompt, urls, frames, duration, references = parse_bullet(
+                content, warn=logger.warning, declared_slots=declared_slots
+            )
         except ValueError as e:
             logger.warning(f"Failed to parse {md_path.name}: {e}")
         if urls and not dry_run:
@@ -160,7 +212,14 @@ def read_bullets(input_dir: Path, dry_run: bool = False) -> list[Bullet]:
                     f"— treating as text-to-video"
                 )
         result.append(
-            {"path": md_path, "prompt": prompt, "reference_urls": urls, "frames": frames}
+            {
+                "path": md_path,
+                "prompt": prompt,
+                "reference_urls": urls,
+                "frames": frames,
+                "duration": duration,
+                "references": references,
+            }
         )
     if not result:
         logger.warning(f"No .md files found in {input_dir}")

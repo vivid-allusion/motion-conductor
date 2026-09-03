@@ -14,19 +14,21 @@ from src.processing.bullet_parser import (
 class TestParseBullet:
     def test_single_line_prompt(self):
         content = "A man walks on the beach.\n![start](https://example.com/frame.jpg)"
-        prompt, urls, frames = parse_bullet(content)
+        prompt, urls, frames, duration, references = parse_bullet(content)
         assert prompt == "A man walks on the beach."
         assert urls == ["https://example.com/frame.jpg"]
         assert frames is None
+        assert duration is None
+        assert references == {}
 
     def test_first_non_empty_line(self):
         content = "\n\nHello world\n![img](https://x.com/a.jpg)"
-        prompt, _, _ = parse_bullet(content)
+        prompt, _, _, _, _ = parse_bullet(content)
         assert prompt == "Hello world"
 
     def test_image_first_line_is_not_prompt(self):
         content = "![start](https://x.com/a.jpg)\nA real prompt"
-        prompt, urls, _ = parse_bullet(content)
+        prompt, urls, _, _, _ = parse_bullet(content)
         assert prompt == "A real prompt"
         assert urls == ["https://x.com/a.jpg"]
 
@@ -40,25 +42,91 @@ class TestParseBullet:
 
     def test_multiple_urls(self):
         content = "Prompt\n![a](https://example.com/1.jpg)\n![b](https://example.com/2.jpg)"
-        _, urls, _ = parse_bullet(content)
+        _, urls, _, _, _ = parse_bullet(content)
         assert urls == ["https://example.com/1.jpg", "https://example.com/2.jpg"]
 
     def test_frames_extracted(self):
         content = "Prompt\n![a](https://example.com/1.jpg)\nframes: 96"
-        _, _, frames = parse_bullet(content)
+        _, _, frames, _, _ = parse_bullet(content)
         assert frames == 96
 
     def test_frames_case_insensitive(self):
         content = "Prompt\nFRAMES: 60"
-        _, _, frames = parse_bullet(content)
+        _, _, frames, _, _ = parse_bullet(content)
         assert frames == 60
 
     def test_format_warning_for_missing_bang(self):
         warnings: list[str] = []
         content = "Prompt\n[alt](https://example.com/1.jpg)"
-        _, urls, _ = parse_bullet(content, warn=warnings.append)
+        _, urls, _, _, _ = parse_bullet(content, warn=warnings.append)
         assert urls == []
         assert any("missing '!'" in w for w in warnings)
+
+    def test_duration_integer(self):
+        content = "Prompt\nduration: 5"
+        _, _, _, duration, _ = parse_bullet(content)
+        assert duration == 5
+
+    def test_duration_token_verbatim(self):
+        content = "Prompt\nduration: auto"
+        _, _, _, duration, _ = parse_bullet(content)
+        assert duration == "auto"
+
+    def test_duration_negative_one_is_int(self):
+        content = "Prompt\nduration: -1"
+        _, _, _, duration, _ = parse_bullet(content)
+        assert duration == -1
+
+    def test_duration_and_frames_both_parsed(self):
+        content = "Prompt\nframes: 96\nduration: auto"
+        _, _, frames, duration, _ = parse_bullet(content)
+        assert frames == 96
+        assert duration == "auto"
+
+    def test_duration_case_insensitive(self):
+        content = "Prompt\nDURATION: 8"
+        _, _, _, duration, _ = parse_bullet(content)
+        assert duration == 8
+
+    def test_named_slot_routed_when_declared(self):
+        content = "Prompt\n![reference_images](https://example.com/1.jpg)"
+        _, urls, _, _, references = parse_bullet(
+            content, declared_slots=["reference_images"]
+        )
+        assert urls == []
+        assert references == {"reference_images": ["https://example.com/1.jpg"]}
+
+    def test_empty_alt_stays_primary_with_schema(self):
+        content = "Prompt\n![](https://example.com/1.jpg)"
+        _, urls, _, _, references = parse_bullet(
+            content, declared_slots=["reference_images"]
+        )
+        assert urls == ["https://example.com/1.jpg"]
+        assert references == {}
+
+    def test_unknown_alt_raises_with_schema(self):
+        content = "Prompt\n![foo](https://example.com/1.jpg)"
+        with pytest.raises(ValueError, match="Unknown reference slot 'foo'"):
+            parse_bullet(content, declared_slots=["reference_images"])
+
+    def test_named_alt_falls_back_to_primary_without_schema(self):
+        content = "Prompt\n![reference_images](https://example.com/1.jpg)"
+        _, urls, _, _, references = parse_bullet(content)
+        assert urls == ["https://example.com/1.jpg"]
+        assert references == {}
+
+    def test_multi_url_same_slot_appends(self):
+        content = (
+            "Prompt\n![reference_images](https://example.com/1.jpg)\n"
+            "![reference_images](https://example.com/2.jpg)"
+        )
+        _, _, _, _, references = parse_bullet(content, declared_slots=["reference_images"])
+        assert references == {
+            "reference_images": [
+                "https://example.com/1.jpg",
+                "https://example.com/2.jpg",
+            ]
+        }
 
 
 class TestValidateImageUrls:
@@ -108,3 +176,19 @@ class TestReadBullets:
         assert len(bullets) == 2
         assert bullets[0]["prompt"] == ""
         assert bullets[1]["prompt"] == "Good prompt"
+
+    def test_declared_slots_passed_to_parser(self, tmp_path):
+        bullet = tmp_path / "b.md"
+        bullet.write_text("Prompt\n![reference_images](https://example.com/frame.jpg)\n")
+        bullets = read_bullets(tmp_path, dry_run=True, declared_slots=["reference_images"])
+        assert bullets[0]["reference_urls"] == []
+        assert bullets[0]["references"] == {
+            "reference_images": ["https://example.com/frame.jpg"]
+        }
+
+    def test_duration_and_references_in_bullet(self, tmp_path):
+        bullet = tmp_path / "b.md"
+        bullet.write_text("Prompt\nduration: auto\n![](https://example.com/frame.jpg)\n")
+        bullets = read_bullets(tmp_path, dry_run=True)
+        assert bullets[0]["duration"] == "auto"
+        assert bullets[0]["reference_urls"] == ["https://example.com/frame.jpg"]

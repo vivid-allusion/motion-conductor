@@ -55,10 +55,15 @@ def _apply_cli_overrides(profile: dict[str, Any], args: Any) -> dict[str, Any]:
 
 
 def _bullet_duration(bullet: Bullet, profile: dict[str, Any]) -> float:
-    """Duration for a bullet: frames override converted via fps, else profile default."""
+    """Duration for a bullet: numeric `duration:` verbatim, else frames via
+    fps, else profile default. Token durations (auto, -1) fall back to the
+    profile default for cost estimation only."""
     params = profile.get("parameters", {})
     fps = float(params.get("fps", 24))
     profile_duration = float(params.get("duration", 5.0))
+    raw = bullet.get("duration")
+    if isinstance(raw, (int, float)) and raw > 0:
+        return float(raw)
     if bullet["frames"]:
         return bullet["frames"] / fps
     return profile_duration
@@ -216,7 +221,9 @@ def _run_studiolot(args) -> int:
 
     input_dir = Path(args.input_dir) if args.input_dir else Path(".")
 
-    bullets = read_bullets(input_dir, dry_run=args.dry_run)
+    bullets = read_bullets(
+        input_dir, dry_run=args.dry_run, declared_slots=profile.get("slots")
+    )
     if not bullets:
         raise FileNotFoundError(f"No .md files found in {input_dir}")
     _handle_preflight_checks(args, bullets, profile)
@@ -259,7 +266,9 @@ def _run_standalone(args) -> int:
     # ── check inputs before creating output dir ──────────────────────────────
 
     input_path, _ = resolve_input_path(profile)
-    bullets = read_bullets(input_path, dry_run=args.dry_run)
+    bullets = read_bullets(
+        input_path, dry_run=args.dry_run, declared_slots=profile.get("slots")
+    )
     _handle_preflight_checks(args, bullets, profile)
 
     if not bullets:

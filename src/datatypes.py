@@ -11,3 +11,5 @@ class Bullet(TypedDict):
     prompt: str
     reference_urls: list[str]
     frames: int | None
+    duration: int | str | None
+    references: dict[str, list[str]]

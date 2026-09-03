@@ -95,7 +95,8 @@ main() → _run_standalone()
                                   #   auto-activate first STANDBY profile (Q2)
   → load_profile_standalone()     # 03.PROFILES/ only — never falls back
   → resolve_input_path()          # profile paths block or USER-FILES/04.INPUT/
-  → read_bullets()                # parse .md inputs (prompt + URLs + frames)
+  → read_bullets()                # parse .md inputs (prompt + URLs + frames +
+                                  #   duration + named slots, profile `slots:`)
   → _handle_preflight_checks()    # --cost-estimation / --dry-run → PreflightExit
   → create_timestamped_output_path()  # 05.OUTPUT/<YYMMDD_HHMMSS>_VID/
   → get_api_key()                 # 4-tier (env → pass → .env → wizard fallback)
@@ -123,12 +124,23 @@ relative_dir}`) → rich `Progress` spinner wrapping `engine._on_progress`
 generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ### Video-Specific Input
-- Bullet files carry `frames: N` optional override (line-parsed via `_FRAMES_RE`)
+- Bullet files carry `frames: N` (deprecated back-compat, converted via fps)
+  and/or `duration: <value>` — raw value parsed verbatim (int or any token
+  like `auto` / `-1`); `duration:` wins over `frames:` (Q8)
+- Named payload slots: `![reference_images](url)` routes the URL to the named
+  slot; empty alt `![](url)` → primary slot. Named routing only when the
+  profile declares `slots:`; unknown alt errors the bullet (Q9), no schema →
+  everything falls back to primary
 - `build_inputs()` reads `fps` and `duration` from profile `parameters` block
-- Each `InputFile.metadata` = `{"duration": float, "fps": int, "relative_dir": str}`
-- Per-bullet `frames:` override converts to duration = frames / fps
+- Each `InputFile.metadata` = `{"duration": int|str|float, "fps": int, "relative_dir": str}`
+  — bullet duration passed VERBATIM (vehicle never interprets it)
+- `InputFile.references` (additive engine field) carries the named-slot map;
+  engines still on the old datatype get a loud warning and drop named refs (Q20)
 - `relative_dir` mirrors the bullet's folder structure under the output dir
-- Legacy profiles with `duration_config` block are normalized by `normalize_legacy_profile()`
+- Cost estimation: numeric bullet durations used, token durations (`auto`,
+  `-1`) fall back to the profile default (Q18)
+- Legacy profiles with `duration_config`/`image_url` blocks are normalized by
+  `normalize_legacy_profile()` (`image_url` → `image_url_param`)
 
 ### CLI Modes
 1. **Standalone mode** (no `--profile`/`--input_dir`/`--output_dir`): reads profile
@@ -148,15 +160,15 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 | `src/main_verbose.py` | Thin entry point, CLI routing, both run modes, `_execute_pipeline()` + preflight + CLI overrides |
 | `src/cli.py` | Declarative `_ARGUMENTS` list — `--input_dir`, `--output_dir`, `--profile`, `--platform`, `--dry-run`, `--debug`, `--verbose`, `--cost-estimation`, `--no-save-payloads`, `--install-default-engine` (no `--force-png`) |
 | `src/constants.py` | `__version__`, `TIMESTAMP_FORMAT`, `DEFAULT_PLATFORM` (canonical home, Q3) |
-| `src/datatypes.py` | `Bullet` TypedDict — path, prompt, reference_urls, frames |
+| `src/datatypes.py` | `Bullet` TypedDict — path, prompt, reference_urls, frames, duration (raw), references (named slots) |
 | `src/exceptions.py` | `AuthenticationError`, `ConfigurationError`, `ValidationError`, `PreflightExit` |
 | `src/engine_contract.py` | `EngineInputFile` protocol + `validate_input_file()` — fail fast on contract mismatch |
 | `src/engine_loader.py` | Vendored canonical `load_engine()` with `EngineLoadContext`; `copy_standby_profiles()` seeds only into an EMPTY `02.STANDBY/` (Q13) |
-| `src/engine_helpers.py` | Discovery (`find_project/vehicle_engines_dir`), `auto_install_engine` (timeout=300), `build_inputs()` (video metadata + relative_dir), `load_engine_or_install`, `print_engine_not_found` |
+| `src/engine_helpers.py` | Discovery (`find_project/vehicle_engines_dir`), `auto_install_engine` (timeout=300), `build_inputs()` (verbatim duration + references + relative_dir + Q20 old-engine warning), `load_engine_or_install`, `print_engine_not_found` |
 | `src/auth/__init__.py` | 4-tier `get_api_key()` (env → pass → .env → AuthenticationError), `SUPPORTED_PLATFORMS`, interactive wizard (`_prompt_platform`, `_offer_engine_install`, `_prompt_and_save_key` → repo-root `.env`) |
 | `src/auth/env.py` | `.env` loading (`get_api_token_from_env`) |
-| `src/processing/bullet_parser.py` | `read_bullets()`, `parse_bullet()`, `validate_image_urls()` — prompt + URLs + `frames:`, `[]` on empty dir, markdown format warnings, HEAD validation skipped on dry-run (Q15) |
-| `src/processing/profiles.py` | `load_profile_standalone()` (no STANDBY fallback), `load_profile_studiolot()`, `normalize_legacy_profile()`, `activate_profile()` |
+| `src/processing/bullet_parser.py` | `read_bullets()`, `parse_bullet()`, `validate_image_urls()` — prompt + URLs + `frames:` + `duration:` (verbatim) + alt-text named slots + `declared_slots` validation, `[]` on empty dir, markdown format warnings, HEAD validation skipped on dry-run (Q15) |
+| `src/processing/profiles.py` | `load_profile_standalone()` (no STANDBY fallback), `load_profile_studiolot()`, `normalize_legacy_profile()` (`image_url` → `image_url_param`), `activate_profile()` |
 | `src/processing/first_run.py` | `handle_first_run()` — engine check, TTY wizard, auto-install, STANDBY seed, auto-activate first STANDBY profile (Q2), non-TTY guidance |
 | `src/utils/logging.py` | loguru + `_TeeStream` capture (encoding is a property) + `write_run_logs()` |
 | `src/utils/path_resolver.py` | Timestamped output dirs `<YYMMDD_HHMMSS>_VID` (Q14) |
@@ -167,6 +179,12 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   `USER-FILES/02.STANDBY/` (engine-seeded backup)
 - Profile format: `platform`, `endpoint`, `parameters` (with `fps`, `duration`),
   `prompt_prefix`, `prompt_suffix`, `pricing`, `paths`
+- Video slot keys (Part 2): top-level `image_url_param` (primary input key;
+  normalized from legacy `image_url`), `slots:` (declared named slots — enables
+  alt-text routing + unknown-alt errors), optional `required_slots:` (emit
+  declared-but-unused slots as `[]`), `duration_param_name` (defaults to
+  `duration`). No runtime TOML lookup — profiles carry these keys (Q17); the
+  engine's endpoint TOML `[general]` slot declarations are Part-3 metadata
 - API keys: `REPLICATE_API_TOKEN` env var (primary), also `FAL_KEY`,
   `OPENROUTER_API_KEY`, `GOOGLE_API_KEY` for multi-platform
 - .env file: loaded from project root on startup (standalone mode)
@@ -175,10 +193,47 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 - requirements.txt: only python-dotenv, loguru, PyYAML, rich — Engines vendor
   their own SDK deps (no replicate pin)
 - `ENGINES/` is gitignored (vendored at runtime, separate repos)
-- Legacy profiles with `Model`/`duration_config` blocks are auto-normalized by
-  `normalize_legacy_profile()`
+- Legacy profiles with `Model`/`duration_config`/`image_url` blocks are
+  auto-normalized by `normalize_legacy_profile()`
 
 ## Session History
+
+### 2026-09-03 — Part 2: Video Input Layer (Duration + Named Payload Slots)
+- `bullet_parser.py`: `duration:` line parsed verbatim (int or token like
+  `auto`/`-1`; Q8 `duration:` wins over `frames:`); alt-text capture — empty
+  alt → primary, named alt → `references[slot]`, unknown alt errors the
+  bullet when the profile declares `slots:` (Q9), no schema → primary fallback;
+  `read_bullets(declared_slots=...)` wired from both run modes
+- `Bullet` TypedDict gains raw `duration` + `references`; `build_inputs()`
+  passes duration verbatim into metadata and `references` only to engines
+  that accept the field — loud warning for old-datatype engines (Q20)
+- `normalize_legacy_profile()`: `image_url` → `image_url_param`; profile
+  carries slot schema via `slots:`/`required_slots:` + `duration_param_name`
+  (Q17 — no runtime TOML lookup; engine TOML `[general]` slots are Part-3
+  metadata)
+- Cost estimation (Q18): numeric bullet durations used, tokens fall back to
+  profile default (`_bullet_duration` in main_verbose)
+- engine-replicate (separate repo, branch `mc-fc-parity`): `InputFile` gains
+  additive `references: dict[str, list[str]]` (appended last — positional
+  order safe); `_build_replicate_input()` routes empty-alt URLs to the
+  primary key (`image_url_param` → `reference_param` → `image_input`), named
+  slots to their own keys, empty lists omitted unless `required_slots`,
+  per-bullet `metadata["duration"]` overrides under `duration_param_name`
+  verbatim; 6 VID TOMLs gained `[general] slots` (seedance-* →
+  reference_images/videos/audios; kling-* → end_image)
+- Gates: MC 60 tests green + ruff clean; engine-replicate 49 tests green
+  (exact Seedance-shaped payload dict asserted); studiolot dry-run exit 0
+  with no output dir; cost-estimation smoke $0.75 on token bullet;
+  end-to-end contract pairing verified (real engine InputFile construction)
+- FC regression: 20 passed / 4 failed — all 4 are FC's own pre-existing
+  baseline failures (stale assertions in FC's own tests: auth message text,
+  `_GENAI` suffix, parser expectations); FC tree untouched, its tests never
+  import the engine
+- Vendored `ENGINES/engine-replicate` is STALE — needs `git pull` once the
+  engine-replicate `mc-fc-parity` changes are pushed to origin; until then
+  standalone runs fall back to the Q20 warning path
+- `main_verbose.py` at 307 lines (soft limit exceeded, under the 400 hard
+  limit — mirrors FC's `main_simple.py`)
 
 ### 2026-09-03 — Part 1: FC Parity (Cold-Start + File-Tree Alignment)
 - Ported FC's zero-setup `run.py` venv lifecycle (repair broken venv, prefer 3.12/3.11/3.10/3)
@@ -239,15 +294,24 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ## Known Issues & Technical Debt
 
-### Remaining (2026-09-03)
+### Remaining (2026-09-03, after Part 2)
 - `build_inputs()` dynamically imports `engine_{platform}` — inherently fragile
   at module-load time (same issue as FC); the real engine package must already
   be on `sys.path` (via `load_engine()`)
 - Real generation paths (animated progress, `engine.run`, payload save) are
   structurally FC-identical but only verified up to the API boundary — no
   live API run in this session
-- `main_verbose.py` at 298 lines — over the 250 soft limit; mirrors FC's
+- `main_verbose.py` at 307 lines — over the 250 soft limit; mirrors FC's
   `main_simple.py` and holds at the 400 hard limit
+- Vendored `ENGINES/engine-replicate` clone is stale (pre-Part-2) — needs
+  `git pull` once the engine-replicate `mc-fc-parity` work is pushed
+
+### Resolved (Part 2)
+- Video bullets now carry `duration:` (verbatim) + named alt slots; payload
+  slot routing + duration override live in engine-replicate
+- Cost estimation breaks on token durations: fixed via profile-default
+  fallback (Q18)
+- Old engines silently dropped named slots: now a loud warning (Q20)
 
 ### Resolved (Part 1)
 - Test coverage: 34 tests added (parser, engine_loader, auth, path_resolver)

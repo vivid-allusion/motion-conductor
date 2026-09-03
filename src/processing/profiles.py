@@ -30,6 +30,9 @@ def normalize_legacy_profile(data: dict[str, Any]) -> dict[str, Any]:
     if "media_type" not in data:
         data["media_type"] = "video"
 
+    if "image_url_param" not in data and "image_url" in data:
+        data["image_url_param"] = data["image_url"]
+
     if "duration_config" in data and "parameters" not in data:
         dc = data.get("duration_config", {})
         if dc:
