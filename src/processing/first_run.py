@@ -1,0 +1,81 @@
+"""First-run wizard path — engine check, interactive wizard, STANDBY seeding."""
+
+import sys
+from pathlib import Path
+from typing import Any
+
+from loguru import logger
+
+from ..auth import get_api_key_interactive
+from ..engine_helpers import load_engine_or_install, print_engine_not_found
+from .profiles import activate_profile, list_standby
+
+
+def handle_first_run(
+    platform: str,
+    search_paths: list[Path],
+    dry_run: bool,
+    auto_install: str | None,
+) -> tuple[str, str | None] | None:
+    """Check for engine, launch wizard if missing, seed STANDBY profiles.
+
+    Returns (platform, api_key) on success, None on non-TTY
+    failure (caller should exit).
+    """
+    has_engine = False
+    for sp in search_paths:
+        try:
+            for entry in sp.iterdir():
+                if entry.is_dir() and entry.name.startswith("engine-"):
+                    has_engine = True
+                    platform = entry.name.removeprefix("engine-")
+                    break
+        except OSError:
+            continue
+        if has_engine:
+            break
+
+    api_key: str | None = None
+    if not dry_run and not has_engine:
+        if sys.stdin.isatty():
+            platform, api_key = get_api_key_interactive()
+            auto_install = platform
+        else:
+            print_engine_not_found(platform)
+            return None
+
+    profile: dict[str, Any] = {"platform": platform}
+    engine_output_dir = Path("/tmp")
+
+    try:
+        load_engine_or_install(
+            platform, search_paths, profile, engine_output_dir, api_key, auto_install
+        )
+    except FileNotFoundError:
+        print_engine_not_found(platform)
+        logger.info(
+            "Re-run with --install-default-engine=replicate "
+            "to auto-install the default Engine."
+        )
+        return None
+
+    _activate_first_profile_if_none()
+
+    return platform, api_key
+
+
+def _activate_first_profile_if_none() -> None:
+    """Copy the first sorted STANDBY profile into 03.PROFILES/ when empty."""
+    active_dir = Path("USER-FILES/03.PROFILES")
+    active_yamls = (
+        sorted(active_dir.glob("*.yaml")) + sorted(active_dir.glob("*.yml"))
+        if active_dir.is_dir()
+        else []
+    )
+    if active_yamls:
+        return
+
+    standby = list_standby()
+    if standby:
+        activated = activate_profile(standby[0])
+        logger.info(f"Activated first STANDBY profile: {activated.name}")

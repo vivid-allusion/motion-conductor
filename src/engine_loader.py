@@ -1,21 +1,20 @@
-"""Vendored Engine discovery and loading.
+"""Canonical Engine discovery and loading.
 
-Per ENGINE_CONTRACT.md §7a: this is a vendored snapshot of
-studiolot/pipeline/engine_loader.py.  Update the canonical copy first,
-then re-vendor into each Vehicle repo.
+Per ENGINE_CONTRACT.md §7a: this is the single canonical implementation of
+load_engine(). Vehicle repos vendor a snapshot copy — update here first,
+then re-vendor.
 """
 
-from __future__ import annotations
-
+import importlib
+import importlib.util
+import shutil
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any
 
-if TYPE_CHECKING:
-    from typing import Any, Callable
-
-DEFAULT_PLATFORM = "replicate"
+from .constants import DEFAULT_PLATFORM
 
 
 @dataclass
@@ -69,15 +68,12 @@ def load_engine(ctx: EngineLoadContext):
     if root not in sys.path:
         sys.path.insert(0, root)
 
-    import importlib
-    import importlib.util
-
     pkg_name = f"engine_{resolved}"
 
-    pkg = None
     spec = importlib.util.spec_from_file_location(
         pkg_name, engine_dir / pkg_name / "__init__.py"
     )
+    pkg = None
     if spec is not None:
         try:
             pkg = importlib.util.module_from_spec(spec)
@@ -103,3 +99,50 @@ def load_engine(ctx: EngineLoadContext):
         on_progress=ctx.on_progress,
     )
     return engine
+
+
+def copy_standby_profiles(platform: str, vehicle_root: Path | None = None) -> int:
+    """Copy standby YAML profiles from engine package to Vehicle's 02.STANDBY/.
+
+    Seeds only into an empty STANDBY — existing profiles (committed video
+    profiles) are never overwritten.
+
+    Args:
+        platform: Engine platform name (e.g. 'replicate').
+        vehicle_root: Vehicle project root.  Defaults to two levels above this file.
+
+    Returns:
+        Number of profile files copied.
+    """
+    if vehicle_root is None:
+        vehicle_root = Path(__file__).resolve().parent.parent
+
+    try:
+        pkg = importlib.import_module(f"engine_{platform}")
+    except ImportError:
+        return 0
+
+    profile_files: list[Path] = []
+    if hasattr(pkg, "list_standby_profiles"):
+        profile_files = pkg.list_standby_profiles()
+    else:
+        source = Path(pkg.__file__).parent / "profiles" / "standby"
+        if source.is_dir():
+            profile_files = sorted(source.glob("*.yaml"))
+
+    if not profile_files:
+        return 0
+
+    dest = vehicle_root / "USER-FILES" / "02.STANDBY"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    existing = sorted(dest.glob("*.yaml")) + sorted(dest.glob("*.yml"))
+    if existing:
+        return 0
+
+    count = 0
+    for yaml_file in profile_files:
+        shutil.copy2(str(yaml_file), str(dest / yaml_file.name))
+        count += 1
+
+    return count

@@ -90,35 +90,44 @@ corresponding package.
 Standalone mode (TTY):
 ```
 main() → _run_standalone()
-  → read_bullets()                # parse .md input files (prompt + URLs + frames)
-  → load_profile_standalone()     # from USER-FILES/03.PROFILES/ or 02.STANDBY/
-  → authenticate()                # 4-tier auth (env → pass → .env → error)
-  → find_vehicle_engines_dir()    # look in <vehicle-root>/ENGINES/
-  → execute_pipeline()            # discover engine, load, build inputs, run
-    → find_project_engines_dir()  # walk up looking for 00_APPLICATIONS/ENGINES/
-    → load_engine()               # import engine_<platform> package
-    → build_inputs()              # construct InputFile objects with metadata
-    → engine.run(inputs)          # bulk video generation
+  → handle_first_run()            # engine check → TTY wizard → auto-install
+                                  #   → STANDBY seed (empty shelf only) →
+                                  #   auto-activate first STANDBY profile (Q2)
+  → load_profile_standalone()     # 03.PROFILES/ only — never falls back
+  → resolve_input_path()          # profile paths block or USER-FILES/04.INPUT/
+  → read_bullets()                # parse .md inputs (prompt + URLs + frames)
+  → _handle_preflight_checks()    # --cost-estimation / --dry-run → PreflightExit
+  → create_timestamped_output_path()  # 05.OUTPUT/<YYMMDD_HHMMSS>_VID/
+  → get_api_key()                 # 4-tier (env → pass → .env → wizard fallback)
+  → load_engine()
+  → _execute_pipeline()           # build inputs → run → report → per-file .log
 ```
 
 Studiolot mode:
 ```
 main() → _run_studiolot()
-  → read_bullets()
   → load_profile_studiolot()      # from --profile path
-  → authenticate()
-  → execute_pipeline()
-    → find_project_engines_dir()  # walk up from --output_dir
-    → load_engine()
-    → build_inputs()
-    → engine.run(inputs)
+  → read_bullets()                # HEAD URL validation skipped under --dry-run
+  → _handle_preflight_checks()    # before any output_dir.mkdir (Q16)
+  → output_dir.mkdir()            # only after preflight passes
+  → get_api_key()
+  → find_project_engines_dir()    # walk up from --output_dir
+  → load_engine()
+  → _execute_pipeline()
 ```
+
+`_execute_pipeline()` (shared): `build_inputs()` (metadata = `{duration, fps,
+relative_dir}`) → rich `Progress` spinner wrapping `engine._on_progress`
+(in-place task description, restored in finally) → `engine.run(inputs)` →
+`_report_results()` → `write_run_logs()` writes `<file>.log` beside every
+generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ### Video-Specific Input
 - Bullet files carry `frames: N` optional override (line-parsed via `_FRAMES_RE`)
 - `build_inputs()` reads `fps` and `duration` from profile `parameters` block
-- Each `InputFile.metadata` = `{"duration": float, "fps": int}`
+- Each `InputFile.metadata` = `{"duration": float, "fps": int, "relative_dir": str}`
 - Per-bullet `frames:` override converts to duration = frames / fps
+- `relative_dir` mirrors the bullet's folder structure under the output dir
 - Legacy profiles with `duration_config` block are normalized by `normalize_legacy_profile()`
 
 ### CLI Modes
@@ -135,17 +144,22 @@ main() → _run_studiolot()
 
 | File | Purpose |
 |------|---------|
-| `run.py` | Bootstrap: venv detection, launches `src/main_verbose.py` from repo root |
-| `src/main_verbose.py` | Entry point, CLI routing, both run modes, error handling |
-| `src/cli.py` | argparse definition — `--input_dir`, `--output_dir`, `--profile`, `--dry-run`, `--debug`, `--install-default-engine` |
-| `src/engine_loader.py` | Canonical `load_engine()` — vendored from studiolot `pipeline/engine_loader.py` |
-| `src/auth/__init__.py` | 4-tier API key resolution (env → pass → .env → AuthenticationError) |
-| `src/execution/pipeline.py` | `PipelineContext` dataclass, `execute_pipeline()`, engine discovery (`find_project_engines_dir`), installation (`auto_install_engine`), `build_inputs()` |
-| `src/input/bullet_reader.py` | `read_bullets()`, `_parse_bullet_md()` — prompt + image URLs + frame count extraction |
-| `src/config/profile_loader.py` | `load_profile_standalone()`, `load_profile_studiolot()`, `normalize_legacy_profile()` — legacy `Model`/`duration_config` → Engine-interface key mapping |
-| `src/utils/logging.py` | loguru setup with `CONSOLE_FORMAT`/`FILE_FORMAT` — optional project-name log prefix |
-
----
+| `run.py` | Zero-setup bootstrap: finds/repairs venv (`venv`, `venv_new`), prefers Python 3.12/3.11/3.10/3, upgrades pip + installs requirements, launches `src.main_verbose` from repo root |
+| `src/main_verbose.py` | Thin entry point, CLI routing, both run modes, `_execute_pipeline()` + preflight + CLI overrides |
+| `src/cli.py` | Declarative `_ARGUMENTS` list — `--input_dir`, `--output_dir`, `--profile`, `--platform`, `--dry-run`, `--debug`, `--verbose`, `--cost-estimation`, `--no-save-payloads`, `--install-default-engine` (no `--force-png`) |
+| `src/constants.py` | `__version__`, `TIMESTAMP_FORMAT`, `DEFAULT_PLATFORM` (canonical home, Q3) |
+| `src/datatypes.py` | `Bullet` TypedDict — path, prompt, reference_urls, frames |
+| `src/exceptions.py` | `AuthenticationError`, `ConfigurationError`, `ValidationError`, `PreflightExit` |
+| `src/engine_contract.py` | `EngineInputFile` protocol + `validate_input_file()` — fail fast on contract mismatch |
+| `src/engine_loader.py` | Vendored canonical `load_engine()` with `EngineLoadContext`; `copy_standby_profiles()` seeds only into an EMPTY `02.STANDBY/` (Q13) |
+| `src/engine_helpers.py` | Discovery (`find_project/vehicle_engines_dir`), `auto_install_engine` (timeout=300), `build_inputs()` (video metadata + relative_dir), `load_engine_or_install`, `print_engine_not_found` |
+| `src/auth/__init__.py` | 4-tier `get_api_key()` (env → pass → .env → AuthenticationError), `SUPPORTED_PLATFORMS`, interactive wizard (`_prompt_platform`, `_offer_engine_install`, `_prompt_and_save_key` → repo-root `.env`) |
+| `src/auth/env.py` | `.env` loading (`get_api_token_from_env`) |
+| `src/processing/bullet_parser.py` | `read_bullets()`, `parse_bullet()`, `validate_image_urls()` — prompt + URLs + `frames:`, `[]` on empty dir, markdown format warnings, HEAD validation skipped on dry-run (Q15) |
+| `src/processing/profiles.py` | `load_profile_standalone()` (no STANDBY fallback), `load_profile_studiolot()`, `normalize_legacy_profile()`, `activate_profile()` |
+| `src/processing/first_run.py` | `handle_first_run()` — engine check, TTY wizard, auto-install, STANDBY seed, auto-activate first STANDBY profile (Q2), non-TTY guidance |
+| `src/utils/logging.py` | loguru + `_TeeStream` capture (encoding is a property) + `write_run_logs()` |
+| `src/utils/path_resolver.py` | Timestamped output dirs `<YYMMDD_HHMMSS>_VID` (Q14) |
 
 ## Configuration
 
@@ -156,10 +170,39 @@ main() → _run_studiolot()
 - API keys: `REPLICATE_API_TOKEN` env var (primary), also `FAL_KEY`,
   `OPENROUTER_API_KEY`, `GOOGLE_API_KEY` for multi-platform
 - .env file: loaded from project root on startup (standalone mode)
+- Interactive wizard saves keys to repo-root `.env`; called from
+  `handle_first_run()` and as a fallback in `_run_standalone()`
+- requirements.txt: only python-dotenv, loguru, PyYAML, rich — Engines vendor
+  their own SDK deps (no replicate pin)
+- `ENGINES/` is gitignored (vendored at runtime, separate repos)
 - Legacy profiles with `Model`/`duration_config` blocks are auto-normalized by
   `normalize_legacy_profile()`
 
 ## Session History
+
+### 2026-09-03 — Part 1: FC Parity (Cold-Start + File-Tree Alignment)
+- Ported FC's zero-setup `run.py` venv lifecycle (repair broken venv, prefer 3.12/3.11/3.10/3)
+- Re-vendored `engine_loader.py` with `EngineLoadContext` (TYPE_CHECKING annotation bug fixed);
+  `copy_standby_profiles()` seeds only an empty STANDBY (Q13 — engine ships image profiles)
+- Added `engine_contract.py` (InputFile protocol + `validate_input_file`), `datatypes.py`
+  (Bullet), `exceptions.py` (PreflightExit/ConfigurationError), `constants.py`
+  (DEFAULT_PLATFORM per Q3)
+- Auth to FC parity: `get_api_key()` / `get_api_key_interactive()` rename (Q7),
+  `SUPPORTED_PLATFORMS`, wizard saves repo-root `.env`, new `auth/env.py`
+- Restructured `src/` to mirror FC: `processing/{bullet_parser,profiles,first_run}.py`,
+  `engine_helpers.py`, `utils/{logging,path_resolver}.py`; deleted `input/`, `config/`,
+  `execution/`, `parsing/` packages
+- Behavior ports: `[]` on empty input dir, URL validation + format warnings (HEAD skipped
+  on dry-run, Q15), `_apply_cli_overrides`, `_handle_preflight_checks` (video cost math Q6,
+  PreflightExit), `relative_dir` mirroring, per-file `.log` via `_TeeStream`, animated rich
+  progress, `{timestamp}_VID` output dirs (Q14), studiolot mkdir after preflight (Q16),
+  auto-activate first STANDBY profile (Q2)
+- requirements.txt: 4 deps only (Q4); pyproject.toml added (ruff/black/pytest)
+- 34 tests ported (parser, engine_loader, auth, path_resolver) — all green, ruff clean
+- Full cold-start verified end-to-end: venv rebuild → engine auto-install → profile
+  auto-activate → dry-run exit 0; real engine load + InputFile construction verified
+- `main_verbose.py` at 298 lines (over 250 soft limit, mirrors FC's `main_simple.py`; OK'd
+  by R5's "thin entry" scope)
 
 ### 2026-08-05 — AGENTS.md rewrite
 - Replaced legacy 1094-line documentation with modern FC-pattern AGENTS.md
@@ -196,11 +239,22 @@ main() → _run_studiolot()
 
 ## Known Issues & Technical Debt
 
-### Remaining (2026-08-05)
-- No test files exist in the repo — zero test coverage
-- `src/parsing/` directory is empty (leftover from pre-migration era) — safe to delete
+### Remaining (2026-09-03)
 - `build_inputs()` dynamically imports `engine_{platform}` — inherently fragile
-  at module-load time (same issue as FC)
+  at module-load time (same issue as FC); the real engine package must already
+  be on `sys.path` (via `load_engine()`)
+- Real generation paths (animated progress, `engine.run`, payload save) are
+  structurally FC-identical but only verified up to the API boundary — no
+  live API run in this session
+- `main_verbose.py` at 298 lines — over the 250 soft limit; mirrors FC's
+  `main_simple.py` and holds at the 400 hard limit
+
+### Resolved (Part 1)
+- Test coverage: 34 tests added (parser, engine_loader, auth, path_resolver)
+- `src/parsing/` empty directory deleted
+- Flat `USER-FILES/05.OUTPUT/`: now timestamped `<YYMMDD_HHMMSS>_VID` run dirs
+- `run.py` venv-missing error: now zero-setup bootstrap
+- `replicate==1.0.4` pin removed; `rich` added for animated progress
 
 ### Resolved (Session 10)
 - `main_verbose.py` god-file: 417 → 143 lines (split into 3 new modules)
