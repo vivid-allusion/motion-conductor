@@ -198,6 +198,24 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ## Session History
 
+### 2026-09-03 — Part 3: AISL `[general]` Chain + Docs Sweep
+- AISL (studiolot repo): the endpoint TOML `[general]` table is now inert
+  no longer — the AppWizard captures it onto the instance binding (nested
+  `general:` table in pipeline.yaml, canonical key order via
+  `pipeline/config_io.py`), `config.parse_pipeline` maps it onto the new
+  `Application.general` field, and `compose_profile()` flattens the whole
+  table into top-level profile keys (Q21: incl. `slots` — named-slot
+  routing works from composed profiles; `duration_type` rides along).
+  Legacy bindings compose unchanged (getattr guards) and upgrade on
+  edit-and-save (Q22); edit-mode re-captures `[general]` from the endpoint
+  TOML. Parameters slide unchanged — `[general]` keys stay excluded.
+  R3 tests extend the existing mirror files (binding round-trip, compose
+  emission, config trio, PREVIEW/dry-run unaffected); suite gate:
+  810 passed / same 11 pre-existing failures / 14 skipped; ruff clean.
+  Docs swept: PHILOSOPHY §3 (retires `frames:`), user-manual
+  Markdown-input.md, VEHICLE_CONTRACT §4d, ENGINE_CONTRACT §3/§5.
+- MC side: docs only — AGENTS.md updated (this entry).
+
 ### 2026-09-03 — Part 2: Video Input Layer (Duration + Named Payload Slots)
 - `bullet_parser.py`: `duration:` line parsed verbatim (int or token like
   `auto`/`-1`; Q8 `duration:` wins over `frames:`); alt-text capture — empty
@@ -294,7 +312,7 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ## Known Issues & Technical Debt
 
-### Remaining (2026-09-03, after Part 2)
+### Remaining (2026-09-03, after Part 3)
 - `build_inputs()` dynamically imports `engine_{platform}` — inherently fragile
   at module-load time (same issue as FC); the real engine package must already
   be on `sys.path` (via `load_engine()`)
@@ -305,6 +323,11 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   `main_simple.py` and holds at the 400 hard limit
 - Vendored `ENGINES/engine-replicate` clone is stale (pre-Part-2) — needs
   `git pull` once the engine-replicate `mc-fc-parity` work is pushed
+
+### Resolved (Part 3)
+- Endpoint TOML `[general]` was inert metadata: now captured onto bindings,
+  parsed into `Application.general`, and flattened into composed profiles
+  (AISL side — see session history)
 
 ### Resolved (Part 2)
 - Video bullets now carry `duration:` (verbatim) + named alt slots; payload
