@@ -12,6 +12,7 @@ from loguru import logger
 from .datatypes import Bullet
 from .engine_contract import validate_input_file
 from .engine_loader import EngineLoadContext, copy_standby_profiles, load_engine
+from .constants import MEDIA_TYPE
 
 
 def find_project_engines_dir(start_dir: Path, max_depth: int = 10) -> Path | None:
@@ -211,7 +212,7 @@ def load_engine_or_install(
         if not auto_install_engine(auto_install):
             raise FileNotFoundError(f"Failed to auto-install engine '{auto_install}'")
         engine = load_engine(ctx)
-    copied = copy_standby_profiles(platform)
+    copied = copy_standby_profiles(platform, media_type=MEDIA_TYPE)
     if copied:
         logger.debug(f"Seeded {copied} standby profile(s) from engine-{platform}")
     return engine

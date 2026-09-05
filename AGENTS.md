@@ -160,11 +160,11 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 | `run.py` | Zero-setup bootstrap: finds/repairs venv (`venv`, `venv_new`), prefers Python 3.12/3.11/3.10/3, upgrades pip + installs requirements, launches `src.main_verbose` from repo root |
 | `src/main_verbose.py` | Thin entry point, CLI routing, both run modes, `_execute_pipeline()` + preflight + CLI overrides |
 | `src/cli.py` | Declarative `_ARGUMENTS` list — `--input_dir`, `--output_dir`, `--profile`, `--platform`, `--dry-run`, `--debug`, `--verbose`, `--cost-estimation`, `--no-save-payloads`, `--install-default-engine` (no `--force-png`) |
-| `src/constants.py` | `__version__`, `TIMESTAMP_FORMAT`, `DEFAULT_PLATFORM` (canonical home, Q3) |
+| `src/constants.py` | `__version__`, `TIMESTAMP_FORMAT`, `DEFAULT_PLATFORM` (canonical home, Q3), `MEDIA_TYPE = "VID"` (declares which engine standby shelf to seed) |
 | `src/datatypes.py` | `Bullet` TypedDict — path, prompt, reference_urls, frames, duration (raw), references (named slots) |
 | `src/exceptions.py` | `AuthenticationError`, `ConfigurationError`, `ValidationError`, `PreflightExit` |
 | `src/engine_contract.py` | `EngineInputFile` protocol + `validate_input_file()` — fail fast on contract mismatch |
-| `src/engine_loader.py` | Vendored canonical `load_engine()` with `EngineLoadContext`; `copy_standby_profiles()` seeds only into an EMPTY `02.STANDBY/` (Q13) |
+| `src/engine_loader.py` | Vendored canonical `load_engine()` with `EngineLoadContext`; `copy_standby_profiles(media_type=...)` syncs the engine-owned VID shelf into `02.STANDBY/` on every load |
 | `src/engine_helpers.py` | Discovery (`find_project/vehicle_engines_dir`), `auto_install_engine` (timeout=300), `build_inputs()` (verbatim duration + references + relative_dir + Q20 old-engine warning), `load_engine_or_install`, `print_engine_not_found` |
 | `src/auth/__init__.py` | 4-tier `get_api_key()` (env → pass → .env → AuthenticationError), `SUPPORTED_PLATFORMS`, interactive wizard (`_prompt_platform`, `_offer_engine_install`, `_prompt_and_save_key` → repo-root `.env`) |
 | `src/auth/env.py` | `.env` loading (`get_api_token_from_env`) |
@@ -199,6 +199,39 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   top-level fps promoted, duration_min → parameters.duration)
 
 ## Session History
+
+### 2026-09-05 — MC YAML-Free: Engine-Owned VID STANDBY Shelf
+- MC is now endpoint-agnostic and profile-YAML-free: the 8 committed video
+  YAMLs in `USER-FILES/02.STANDBY/` were removed from the repo (only
+  `.gitkeep` remains). The Vehicle carries zero profile content — profiles
+  are engine configuration and live in the Engine repo.
+- The engine owns the STANDBY shelf: `copy_standby_profiles()` now syncs
+  the engine's standby profiles on EVERY load (empty-only Q13 rule removed),
+  filtered by the Vehicle's declared media type — MC passes
+  `MEDIA_TYPE = "VID"` (new `src/constants.py` constant) so only the
+  engine's `profiles/standby/VID/` shelf is seeded. Frame Composer mirrors
+  this with `MEDIA_TYPE = "IMG"`.
+- engine-replicate: standby profiles reorganized into
+  `profiles/standby/IMG/` (30 image YAMLs, moved) and
+  `profiles/standby/VID/` (11 new video YAMLs authored from the
+  `endpoints/VID-Models/` TOML defaults — kling 2.5 turbo pro / 2.6 / v3,
+  seedance 2.0 / lite / pro, wan-2.5-i2v, p-video, veo-3, veo-3.1,
+  grok-imagine-video). `list_standby_profiles(media_type)` selects the
+  shelf (None → all, legacy); loader falls back to a no-arg call on
+  TypeError for engines without the parameter.
+- Vendored `ENGINES/engine-replicate` clone updated in place with the new
+  layout (runtime vendor; push via origin repo). Verified end-to-end:
+  VID → 11, IMG → 30, None → 41; p-video YAML flows through
+  `normalize_legacy_profile()` + `build_inputs()` (image_url_param=image,
+  slots=[audio], named reference routing). Engine 53 green, MC 69 green
+  (2 pre-existing test_auth failures on system Python 3.14 env only).
+
+### 2026-09-05 — Console Output Cleanup + First-Run Guidance Panel
+- `CONSOLE_FORMAT` in `src/utils/logging.py` drops `{name}:{function}` —
+  console logs are now `HH:mm:ss | LEVEL | message`.
+- First-run profile guidance (`_print_profile_guidance()` in
+  `main_verbose.py`) prints full absolute USER-FILES paths, rich-styled,
+  no panel box.
 
 ### 2026-09-05 — First-Run No Longer Auto-Activates Profiles
 - Removed `_activate_first_profile_if_none()` (Q2): engine installs now seed

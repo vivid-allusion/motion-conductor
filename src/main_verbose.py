@@ -46,6 +46,28 @@ from .utils.path_resolver import (
 # ── CLI / orchestration helpers ────────────────────────────────────────────────
 
 
+def _print_profile_guidance() -> None:
+    """Pretty guidance for activating a profile after the first-run wizard."""
+    from rich.console import Console
+    from rich.text import Text
+
+    root = Path(__file__).resolve().parent.parent
+    standby = root / "USER-FILES" / "02.STANDBY"
+    active = root / "USER-FILES" / "03.PROFILES"
+
+    body = Text()
+    body.append("Thanks for supplying your API key!\n", style="bold green")
+    body.append("To make the script operational:\n", style="bold")
+    body.append("  1. Pick a profile YAML from:\n", style="dim")
+    body.append(f"     {standby}/\n", style="cyan")
+    body.append("  2. Copy it to:\n", style="dim")
+    body.append(f"     {active}/\n", style="cyan")
+    body.append("  3. Re-run the script\n", style="dim")
+
+    Console().print(body)
+
+
+
 def _apply_cli_overrides(profile: dict[str, Any], args: Any) -> dict[str, Any]:
     """Return a copy of profile with CLI flags merged into parameters."""
     params = dict(profile.get("parameters", {}))
@@ -253,12 +275,7 @@ def _run_standalone(args) -> int:
         profile = load_profile_standalone()
         platform = profile.get("platform") or platform
     except ConfigurationError:
-        print(
-            "\nThanks for supplying your API key. "
-            "To make the script operational, pick a profile YAML\n"
-            "from motion-conductor/USER-FILES/02.STANDBY/ and copy it to\n"
-            "motion-conductor/USER-FILES/03.PROFILES/, then re-run.\n"
-        )
+        _print_profile_guidance()
         return 0
 
     profile = _apply_cli_overrides(profile, args)

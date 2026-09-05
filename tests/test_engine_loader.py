@@ -77,7 +77,7 @@ class TestCopyStandbyProfiles:
         dest = tmp_path / "USER-FILES" / "02.STANDBY"
         assert sorted(p.name for p in dest.glob("*.yaml")) == ["one.yaml", "two.yaml"]
 
-    def test_skips_when_standby_not_empty(self, tmp_path):
+    def test_syncs_over_existing_standby(self, tmp_path):
         source = tmp_path / "engine"
         pkg = self._make_fake_pkg(source)
         dest = tmp_path / "USER-FILES" / "02.STANDBY"
@@ -85,9 +85,28 @@ class TestCopyStandbyProfiles:
         (dest / "existing.yaml").write_text("keep: me\n")
         with patch("src.engine_loader.importlib.import_module", return_value=pkg):
             count = copy_standby_profiles("replicate", vehicle_root=tmp_path)
-        assert count == 0
-        assert not (dest / "one.yaml").exists()
+        assert count == 2
+        assert (dest / "one.yaml").exists()
+        assert (dest / "two.yaml").exists()
         assert (dest / "existing.yaml").exists()
+
+    def test_passes_media_type_to_engine_shelf_selector(self, tmp_path):
+        calls: list[tuple] = []
+
+        def list_standby_profiles(media_type=None):
+            calls.append(media_type)
+            source = tmp_path / "engine" / "profiles" / "standby"
+            return sorted(source.glob("*.yaml"))
+
+        source = tmp_path / "engine"
+        standby = source / "profiles" / "standby"
+        standby.mkdir(parents=True)
+        (standby / "one.yaml").write_text("a: 1\n")
+        pkg = types.SimpleNamespace(list_standby_profiles=list_standby_profiles)
+        with patch("src.engine_loader.importlib.import_module", return_value=pkg):
+            count = copy_standby_profiles("replicate", vehicle_root=tmp_path, media_type="VID")
+        assert count == 1
+        assert calls == ["VID"]
 
     def test_no_engine_package_returns_zero(self, tmp_path):
         with patch(

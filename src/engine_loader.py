@@ -101,15 +101,22 @@ def load_engine(ctx: EngineLoadContext):
     return engine
 
 
-def copy_standby_profiles(platform: str, vehicle_root: Path | None = None) -> int:
+def copy_standby_profiles(
+    platform: str, vehicle_root: Path | None = None, media_type: str | None = None
+) -> int:
     """Copy standby YAML profiles from engine package to Vehicle's 02.STANDBY/.
 
-    Seeds only into an empty STANDBY — existing profiles (committed video
-    profiles) are never overwritten.
+    The engine owns the STANDBY shelf: every load syncs the engine's
+    standby profiles over the shelf, filtered by the Vehicle's media type
+    (Motion Conductor → VID, Frame Composer → IMG). Users activate a
+    profile by copying it into 03.PROFILES/ — the shelf itself is not
+    user-edited.
 
     Args:
         platform: Engine platform name (e.g. 'replicate').
         vehicle_root: Vehicle project root.  Defaults to two levels above this file.
+        media_type: 'IMG' or 'VID' shelf to seed. None seeds everything
+            (engines without category shelves).
 
     Returns:
         Number of profile files copied.
@@ -124,7 +131,10 @@ def copy_standby_profiles(platform: str, vehicle_root: Path | None = None) -> in
 
     profile_files: list[Path] = []
     if hasattr(pkg, "list_standby_profiles"):
-        profile_files = pkg.list_standby_profiles()
+        try:
+            profile_files = pkg.list_standby_profiles(media_type)
+        except TypeError:
+            profile_files = pkg.list_standby_profiles()
     else:
         source = Path(pkg.__file__).parent / "profiles" / "standby"
         if source.is_dir():
@@ -135,10 +145,6 @@ def copy_standby_profiles(platform: str, vehicle_root: Path | None = None) -> in
 
     dest = vehicle_root / "USER-FILES" / "02.STANDBY"
     dest.mkdir(parents=True, exist_ok=True)
-
-    existing = sorted(dest.glob("*.yaml")) + sorted(dest.glob("*.yml"))
-    if existing:
-        return 0
 
     count = 0
     for yaml_file in profile_files:
