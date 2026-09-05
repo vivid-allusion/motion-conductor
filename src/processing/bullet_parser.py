@@ -8,6 +8,10 @@ Parses bullet .md files and extracts:
 - Optional frame count from a `frames: N` line (deprecated, converted via fps)
 - Optional raw duration from a `duration: <int|token>` line (verbatim)
 
+HTML comments are ignored: anything between <!-- and --> (single-line,
+inline, or spanning multiple lines) is stripped before parsing, so
+commented-out prompts, images, or metadata never reach the payload.
+
 Format:
     Line 1: Text prompt
     Lines 2+: ![alt](URL), frames: N and/or duration: <value>
@@ -39,6 +43,24 @@ _HTML_IMG_PATTERN = re.compile(r"<img[^>]*src\s*=\s*['\"]([^'\"]+)['\"]", re.IGN
 _NON_HTTP_URL = re.compile(
     r"!\[.*?\]\((?!https?://)(\.\.?/|\.\.?\\|//|/|data:|file:|ftp:|[A-Za-z]:\\|\w+://)[^\)]+\)"
 )
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _strip_html_comments(
+    content: str, warn: "Callable[[str], None] | None" = None
+) -> str:
+    """Remove HTML comments (<!-- ... -->) — single-line, inline, or blocks.
+
+    Warns and truncates at the first leftover opener when a comment is left
+    unclosed (everything from it to EOF is ignored).
+    """
+    stripped = _HTML_COMMENT_RE.sub("", content)
+    unclosed_at = stripped.find("<!--")
+    if unclosed_at != -1:
+        if warn is not None:
+            warn("Unclosed HTML comment — everything after '<!--' is ignored")
+        stripped = stripped[:unclosed_at]
+    return stripped
 
 
 def _check_line(line: str, lineno: int, warn: "Callable[[str], None] | None") -> None:
@@ -119,7 +141,7 @@ def parse_bullet(
     Raises:
         ValueError: If no prompt found.
     """
-    lines = markdown_content.split("\n")
+    lines = _strip_html_comments(markdown_content, warn).split("\n")
     prompt = ""
     urls: list[str] = []
     frames: int | None = None

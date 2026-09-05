@@ -160,6 +160,53 @@ class TestParseBullet:
         }
 
 
+    def test_html_comment_line_ignored(self):
+        content = (
+            "Prompt\n"
+            "<!-- ![audio](https://example.com/dead.wav) -->\n"
+            "![image](https://example.com/live.jpg)"
+        )
+        _, urls, _, _, references = parse_bullet(
+            content, declared_slots=["audio"], primary_slot="image"
+        )
+        assert urls == ["https://example.com/live.jpg"]
+        assert references == {}
+
+    def test_html_comment_block_ignored(self):
+        content = (
+            "Prompt\n"
+            "<!--\n"
+            "![audio](https://example.com/dead.wav)\n"
+            "Duration: 99\n"
+            "-->\n"
+            "Duration: 7"
+        )
+        _, _, _, duration, references = parse_bullet(
+            content, declared_slots=["audio"], primary_slot="image"
+        )
+        assert duration == 7
+        assert references == {}
+
+    def test_inline_html_comment_stripped(self):
+        content = "A man walks <!-- this part is hidden --> on the beach."
+        prompt, _, _, _, _ = parse_bullet(content)
+        assert prompt == "A man walks  on the beach."
+
+    def test_unclosed_html_comment_ignores_to_eof(self):
+        content = "Prompt\n<!-- ![audio](https://example.com/a.wav)\n"
+        warnings: list[str] = []
+        _, _, _, _, references = parse_bullet(
+            content, warn=warnings.append, declared_slots=["audio"]
+        )
+        assert references == {}
+        assert any("Unclosed HTML comment" in w for w in warnings)
+
+    def test_commented_out_whole_bullet_raises(self):
+        content = "<!--\nPrompt\n![image](https://example.com/a.jpg)\n-->"
+        with pytest.raises(ValueError, match="No prompt"):
+            parse_bullet(content)
+
+
 class TestValidateImageUrls:
     def test_split_valid_invalid(self):
         class FakeResp:
