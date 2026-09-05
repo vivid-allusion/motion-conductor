@@ -36,7 +36,12 @@ from .processing.profiles import (
     load_profile_standalone,
     load_profile_studiolot,
 )
-from .utils.logging import setup_logging, start_output_capture, write_run_logs
+from .utils.logging import (
+    log_file_only,
+    setup_logging,
+    start_output_capture,
+    write_run_logs,
+)
 from .utils.path_resolver import (
     create_timestamped_output_path,
     resolve_input_path,
@@ -159,7 +164,7 @@ def _execute_pipeline(
                 logger.error(text)
             payload = getattr(msg, "api_payload", None)
             if payload is not None:
-                logger.info(f"Payload: {payload}")
+                log_file_only(f"Payload: {payload}")
 
         original = engine._on_progress
         engine._on_progress = on_progress

@@ -22,6 +22,14 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 _capture: io.StringIO | None = None
 
+_file_only: list[str] = []
+
+
+def log_file_only(message: str) -> None:
+    """Record a message that goes into the run .log files, never the console."""
+    ts = datetime.now().strftime("%H:%M:%S")
+    _file_only.append(f"{ts} | INFO     | {message}")
+
 
 class _TeeStream(io.TextIOBase):
     """Forward writes to the real stream while capturing a plain-text copy."""
@@ -75,8 +83,12 @@ def start_output_capture() -> None:
 
 
 def captured_output() -> str:
-    """Return everything written to stdout/stderr since capture started."""
-    return _capture.getvalue() if _capture is not None else ""
+    """Return everything written to stdout/stderr since capture started,
+    plus file-only records (payloads etc. hidden from the console)."""
+    base = _capture.getvalue() if _capture is not None else ""
+    if not _file_only:
+        return base
+    return base + "\n".join(_file_only) + "\n"
 
 
 def write_run_logs(generated_paths: list[Path], output_dir: Path) -> list[Path]:
