@@ -104,10 +104,41 @@ class TestParseBullet:
         assert urls == ["https://example.com/1.jpg"]
         assert references == {}
 
-    def test_unknown_alt_raises_with_schema(self):
+    def test_unknown_alt_defaults_to_primary_with_warning(self):
         content = "Prompt\n![foo](https://example.com/1.jpg)"
-        with pytest.raises(ValueError, match="Unknown reference slot 'foo'"):
-            parse_bullet(content, declared_slots=["reference_images"])
+        warnings: list[str] = []
+        _, urls, _, _, references = parse_bullet(
+            content,
+            warn=warnings.append,
+            declared_slots=["reference_images"],
+        )
+        assert urls == ["https://example.com/1.jpg"]
+        assert references == {}
+        assert any("Unknown reference slot 'foo'" in w for w in warnings)
+
+    def test_primary_slot_name_alt_routes_to_primary(self):
+        content = "Prompt\n![image](https://example.com/1.jpg)"
+        _, urls, _, _, references = parse_bullet(
+            content, declared_slots=["audio"], primary_slot="image"
+        )
+        assert urls == ["https://example.com/1.jpg"]
+        assert references == {}
+
+    def test_custom_primary_slot_name_alt_routes_to_primary(self):
+        content = "Prompt\n![start_image](https://example.com/1.jpg)"
+        _, urls, _, _, references = parse_bullet(
+            content, declared_slots=["end_image"], primary_slot="start_image"
+        )
+        assert urls == ["https://example.com/1.jpg"]
+        assert references == {}
+
+    def test_primary_slot_name_not_stolen_from_declared(self):
+        content = "Prompt\n![audio](https://example.com/1.jpg)"
+        _, urls, _, _, references = parse_bullet(
+            content, declared_slots=["audio"], primary_slot="image"
+        )
+        assert urls == []
+        assert references == {"audio": ["https://example.com/1.jpg"]}
 
     def test_named_alt_falls_back_to_primary_without_schema(self):
         content = "Prompt\n![reference_images](https://example.com/1.jpg)"
@@ -185,6 +216,15 @@ class TestReadBullets:
         assert bullets[0]["references"] == {
             "reference_images": ["https://example.com/frame.jpg"]
         }
+
+    def test_primary_slot_passed_to_parser(self, tmp_path):
+        bullet = tmp_path / "b.md"
+        bullet.write_text("Prompt\n![start_image](https://example.com/frame.jpg)\n")
+        bullets = read_bullets(
+            tmp_path, dry_run=True, declared_slots=["end_image"], primary_slot="start_image"
+        )
+        assert bullets[0]["reference_urls"] == ["https://example.com/frame.jpg"]
+        assert bullets[0]["references"] == {}
 
     def test_duration_and_references_in_bullet(self, tmp_path):
         bullet = tmp_path / "b.md"

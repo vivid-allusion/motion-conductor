@@ -244,7 +244,10 @@ def _run_studiolot(args) -> int:
     input_dir = Path(args.input_dir) if args.input_dir else Path(".")
 
     bullets = read_bullets(
-        input_dir, dry_run=args.dry_run, declared_slots=profile.get("slots")
+        input_dir,
+        dry_run=args.dry_run,
+        declared_slots=profile.get("slots"),
+        primary_slot=profile.get("image_url_param") or "image",
     )
     if not bullets:
         raise FileNotFoundError(f"No .md files found in {input_dir}")
@@ -284,7 +287,10 @@ def _run_standalone(args) -> int:
 
     input_path, _ = resolve_input_path(profile)
     bullets = read_bullets(
-        input_path, dry_run=args.dry_run, declared_slots=profile.get("slots")
+        input_path,
+        dry_run=args.dry_run,
+        declared_slots=profile.get("slots"),
+        primary_slot=profile.get("image_url_param") or "image",
     )
     _handle_preflight_checks(args, bullets, profile)
 

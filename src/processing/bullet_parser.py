@@ -2,8 +2,9 @@
 
 Parses bullet .md files and extracts:
 - Text prompt from the first non-empty, non-image line
-- Reference URLs from markdown ![alt](URL) syntax — empty alt feeds the
-  primary slot, a named alt feeds the named slot (when declared)
+- Reference URLs from markdown ![alt](URL) syntax — empty alt, the primary
+  slot name, or an unknown alt feeds the primary slot; a declared named alt
+  feeds the named slot
 - Optional frame count from a `frames: N` line (deprecated, converted via fps)
 - Optional raw duration from a `duration: <int|token>` line (verbatim)
 
@@ -84,32 +85,39 @@ def _route_image(
     urls: list[str],
     references: dict[str, list[str]],
     declared_slots: list[str] | None,
+    primary_slot: str,
+    warn: "Callable[[str], None] | None" = None,
 ) -> None:
-    """Route a URL: empty alt or no slot schema → primary; else named slot.
+    """Route a URL: empty/primary/unknown alt → primary; declared alt → named slot.
 
-    Raises:
-        ValueError: alt text not declared in the profile's slot schema.
+    Unknown alts default to the primary slot (with a warning) instead of
+    erroring the bullet.
     """
     alt = alt.strip()
-    if not alt or declared_slots is None:
+    if not alt or declared_slots is None or alt == primary_slot:
         urls.append(url)
         return
-    if alt not in declared_slots:
-        raise ValueError(
-            f"Unknown reference slot '{alt}' — declared slots: {declared_slots}"
+    if alt in declared_slots:
+        references.setdefault(alt, []).append(url)
+        return
+    if warn is not None:
+        warn(
+            f"Unknown reference slot '{alt}' — defaulting to primary slot "
+            f"'{primary_slot}'"
         )
-    references.setdefault(alt, []).append(url)
+    urls.append(url)
 
 
 def parse_bullet(
     markdown_content: str,
     warn: "Callable[[str], None] | None" = None,
     declared_slots: list[str] | None = None,
+    primary_slot: str = "image",
 ) -> tuple[str, list[str], int | None, int | str | None, dict[str, list[str]]]:
     """Parse a .md bullet, returning (prompt, urls, frames, duration, references).
 
     Raises:
-        ValueError: If no prompt found or an alt is not a declared slot.
+        ValueError: If no prompt found.
     """
     lines = markdown_content.split("\n")
     prompt = ""
@@ -128,7 +136,13 @@ def parse_bullet(
             first_match = _IMG_URL_PATTERN.search(line)
             if first_match:
                 _route_image(
-                    first_match.group(1), first_match.group(2), urls, references, declared_slots
+                    first_match.group(1),
+                    first_match.group(2),
+                    urls,
+                    references,
+                    declared_slots,
+                    primary_slot,
+                    warn,
                 )
                 continue
             prompt = stripped
@@ -137,7 +151,9 @@ def parse_bullet(
 
         match = _IMG_URL_PATTERN.search(line)
         if match:
-            _route_image(match.group(1), match.group(2), urls, references, declared_slots)
+            _route_image(
+                match.group(1), match.group(2), urls, references, declared_slots, primary_slot, warn
+            )
         elif _FRAMES_RE.match(stripped):
             if frames is None:
                 frames = int(_FRAMES_RE.match(stripped).group(1))
@@ -179,11 +195,14 @@ def read_bullets(
     input_dir: Path,
     dry_run: bool = False,
     declared_slots: list[str] | None = None,
+    primary_slot: str = "image",
 ) -> list[Bullet]:
     """Read .md bullets from input_dir, extract prompt + URLs + frames + duration.
 
     declared_slots (from the profile's `slots:` key) enables named-slot
     routing; without it every alt falls back to the primary slot.
+    primary_slot (from the profile's `image_url_param` key) is the slot name
+    that routes to the primary input; unknown alts default there.
     Returns [] (with a warning) when the directory holds no .md files.
     """
     md_files = sorted(input_dir.rglob("*.md"))
@@ -197,7 +216,10 @@ def read_bullets(
         references: dict[str, list[str]] = {}
         try:
             prompt, urls, frames, duration, references = parse_bullet(
-                content, warn=logger.warning, declared_slots=declared_slots
+                content,
+                warn=logger.warning,
+                declared_slots=declared_slots,
+                primary_slot=primary_slot,
             )
         except ValueError as e:
             logger.warning(f"Failed to parse {md_path.name}: {e}")

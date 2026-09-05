@@ -128,10 +128,12 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 - Bullet files carry `frames: N` (deprecated back-compat, converted via fps)
   and/or `duration: <value>` — raw value parsed verbatim (int or any token
   like `auto` / `-1`); `duration:` wins over `frames:` (Q8)
-- Named payload slots: `![reference_images](url)` routes the URL to the named
-  slot; empty alt `![](url)` → primary slot. Named routing only when the
-  profile declares `slots:`; unknown alt errors the bullet (Q9), no schema →
-  everything falls back to primary
+- Named payload slots: `![slot](url)` routes the URL — empty alt, the primary
+  slot name (`image_url_param`, e.g. `image`), or an unknown alt all feed the
+  primary slot (unknown alt warns and defaults, no longer errors); a declared
+  named alt (profile `slots:`) feeds that slot; no schema → primary fallback
+- `read_bullets(primary_slot=...)` takes the profile's `image_url_param`
+  (default `"image"`); both run modes pass it through
 - `build_inputs()` reads `fps` and `duration` from profile `parameters` block
 - Each `InputFile.metadata` = `{"duration": int|str|float, "fps": int, "relative_dir": str}`
   — bullet duration passed VERBATIM (vehicle never interprets it)
@@ -199,6 +201,55 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   top-level fps promoted, duration_min → parameters.duration)
 
 ## Session History
+
+### 2026-09-05 — Engine TOML Catalog Mirrors Live Schemas (21/21)
+- All 21 endpoint TOMLs in engine-replicate were swept against their live
+  openapi schemas after the p-video gap (missing `no_op`/`save_audio`/
+  `disable_safety_filter`/`last_frame_image`) proved the catalog had
+  silently drifted from the server.
+- New NON-NEGOTIABLE engine policy (engine-replicate AGENTS.md): every
+  server-side input MUST be declared in the endpoint TOML; no invented
+  params/slots/options; enums, ranges, and defaults mirror the server.
+- New gate: `scripts/check_schema_sync.py` (fetches live schemas, diffs
+  the catalog, exit 1 on drift) + offline checker-logic tests. Final run:
+  21/21 OK. The 11 VID standby YAMLs regenerated to match.
+- MC-side: no vehicle changes; `02.STANDBY/` refreshes from the engine
+  shelf on the next run. NOTE: `USER-FILES/03.PROFILES/p-video.yaml` is the
+  user's activated copy and was NOT touched — copy the refreshed standby
+  YAML over it to pick up `last_frame_image` routing.
+
+### 2026-09-05 — Engine: Scalar Params Coerced Against Live Schema (422 fix)
+- Live p-video run hit 422 on `input.duration`/`input.fps` (string vs
+  integer): the engine-authored VID YAMLs carry TOML select defaults as
+  quoted strings. Fixed in the vendored engine (ENGINES/engine-replicate,
+  runtime vendor — push via origin repo):
+  - `_build_replicate_input()` coerces every parameter via new
+    `_coerce_param_value()` (integer/number/boolean against the model
+    openapi schema; tokens like `auto` and unknown-schema runs pass
+    verbatim); metadata duration override coerced the same way.
+  - `_input_props()` resolves `$ref`/`allOf` fragments (new
+    `_resolve_schema_refs()`) — p-video declares fps as
+    `{"allOf": [{"$ref": "#/components/schemas/fps"}]}`.
+  - Verified live: duration/fps → int 5/24; engine tests 63 green.
+- MC-side: no vehicle changes this round.
+
+### 2026-09-05 — Alt-Text Routing: Unknown Alt Defaults to Primary Slot
+- `_route_image()` no longer raises on unknown alt text: alt matching the
+  primary slot name (`image_url_param`) or any unknown alt now feeds the
+  primary slot; only declared named alts (profile `slots:`) route to named
+  slots. Unknown alts log a warning ("defaulting to primary slot") instead
+  of erroring the bullet — this fixes live bullets whose alt text is a
+  filename (e.g. `![movie-still.jpg](url)`), which previously parsed as
+  an unknown slot, lost the prompt, and died with "Empty prompt after
+  applying prefix/suffix".
+- `parse_bullet()`/`read_bullets()` gain `primary_slot: str = "image"`;
+  both run modes pass `profile.get("image_url_param") or "image"` (kling →
+  `start_image`, p-video → `image`).
+- Tests: unknown-alt raise test replaced with default-to-primary + warning
+  coverage; new cases for primary-name alt routing, custom primary names,
+  primary-vs-declared precedence, `read_bullets(primary_slot=...)` wiring.
+  73 green + 2 pre-existing test_auth failures (system Python 3.14 only);
+  ruff clean on touched files.
 
 ### 2026-09-05 — MC YAML-Free: Engine-Owned VID STANDBY Shelf
 - MC is now endpoint-agnostic and profile-YAML-free: the 8 committed video
@@ -390,12 +441,13 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   against the live openapi schema via jsonschema instead
 - `main_verbose.py` at 307 lines — over the 250 soft limit; mirrors FC's
   `main_simple.py` and holds at the 400 hard limit
-- **Unknown-slot parse errors degrade softly** (found in the Part 3 dry-run
-  smoke): `read_bullets()` logs a warning but still appends the bullet
-  without its references — the bullet silently runs as text-to-video.
-  Q9's settled intent was "error the bullet, fail loud". Fix when MC src/
-  is next in scope: on `ValueError` from `parse_bullet`, reject the bullet
-  (skip append) so the run fails instead of generating the wrong video.
+- **No-prompt bullets degrade softly**: `read_bullets()` logs a warning on
+  `ValueError` from `parse_bullet` but still appends the bullet with an empty
+  prompt — the engine then fails with "Empty prompt after applying
+  prefix/suffix". Fix when MC src/ is next in scope: on `ValueError`, reject
+  the bullet (skip append) so the run fails at parse time instead of at the
+  engine. (The former unknown-slot half of this issue is resolved — unknown
+  alts now default to the primary slot with a warning.)
 
 ### Resolved (2026-09-05)
 - Replicate 422 "Invalid type. Expected: string, given: array": engine now
