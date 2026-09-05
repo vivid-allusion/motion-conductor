@@ -42,8 +42,10 @@ def print_engine_not_found(platform: str) -> None:
         p_key = _key_name(p)
         marker = "  ← default" if p == platform else ""
         lines.append(f"  [{p}]{marker}\n")
-        lines.append(f"    git clone https://github.com/vivid-allusion/engine-{p}.git "
-                     f"ENGINES/engine-{p}/\n")
+        lines.append(
+            f"    git clone https://github.com/vivid-allusion/engine-{p}.git "
+            f"ENGINES/engine-{p}/\n"
+        )
         lines.append(f"    pip install engine-{p}\n")
         lines.append(f"    {p_key}=...  (in .env)\n")
         lines.append("\n")
@@ -118,7 +120,7 @@ def build_inputs(
 
     params = (profile or {}).get("parameters", {})
     fps = int(params.get("fps", 24))
-    profile_duration = float(params.get("duration", 5.0))
+    profile_duration = params.get("duration", 5)
 
     accepts_references = "references" in inspect.signature(InputFile.__init__).parameters
     if not accepts_references and any(b.get("references") for b in bullets):
@@ -207,9 +209,7 @@ def load_engine_or_install(
             raise
         logger.info(f"Auto-installing Engine: {auto_install}")
         if not auto_install_engine(auto_install):
-            raise FileNotFoundError(
-                f"Failed to auto-install engine '{auto_install}'"
-            )
+            raise FileNotFoundError(f"Failed to auto-install engine '{auto_install}'")
         engine = load_engine(ctx)
     copied = copy_standby_profiles(platform)
     if copied:

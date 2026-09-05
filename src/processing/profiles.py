@@ -33,12 +33,16 @@ def normalize_legacy_profile(data: dict[str, Any]) -> dict[str, Any]:
     if "image_url_param" not in data and "image_url" in data:
         data["image_url_param"] = data["image_url"]
 
-    if "duration_config" in data and "parameters" not in data:
-        dc = data.get("duration_config", {})
-        if dc:
-            data["parameters"] = {"fps": dc.get("fps", 24)}
-    elif "parameters" not in data:
-        data["parameters"] = {}
+    if "duration_config" in data or "params" in data or "parameters" not in data:
+        params: dict[str, Any] = dict(data.get("parameters") or {})
+        if not params and isinstance(data.get("params"), dict):
+            params = dict(data["params"])
+        dc = data.get("duration_config", {}) or {}
+        if "fps" not in params:
+            params["fps"] = data.get("fps", dc.get("fps", 24))
+        if "duration" not in params and "duration_min" in data:
+            params["duration"] = data["duration_min"]
+        data["parameters"] = params
 
     params = data.get("parameters", {})
     if "fps" not in params:

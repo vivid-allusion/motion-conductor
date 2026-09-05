@@ -91,9 +91,10 @@ Standalone mode (TTY):
 ```
 main() → _run_standalone()
   → handle_first_run()            # engine check → TTY wizard → auto-install
-                                  #   → STANDBY seed (empty shelf only) →
-                                  #   auto-activate first STANDBY profile (Q2)
-  → load_profile_standalone()     # 03.PROFILES/ only — never falls back
+                                  #   → STANDBY seed (empty shelf only) —
+                                  #   03.PROFILES/ is NEVER auto-populated
+  → load_profile_standalone()     # 03.PROFILES/ only — never falls back;
+                                  #   empty → guidance to copy from 02.STANDBY/
   → resolve_input_path()          # profile paths block or USER-FILES/04.INPUT/
   → read_bullets()                # parse .md inputs (prompt + URLs + frames +
                                   #   duration + named slots, profile `slots:`)
@@ -169,7 +170,7 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 | `src/auth/env.py` | `.env` loading (`get_api_token_from_env`) |
 | `src/processing/bullet_parser.py` | `read_bullets()`, `parse_bullet()`, `validate_image_urls()` — prompt + URLs + `frames:` + `duration:` (verbatim) + alt-text named slots + `declared_slots` validation, `[]` on empty dir, markdown format warnings, HEAD validation skipped on dry-run (Q15) |
 | `src/processing/profiles.py` | `load_profile_standalone()` (no STANDBY fallback), `load_profile_studiolot()`, `normalize_legacy_profile()` (`image_url` → `image_url_param`), `activate_profile()` |
-| `src/processing/first_run.py` | `handle_first_run()` — engine check, TTY wizard, auto-install, STANDBY seed, auto-activate first STANDBY profile (Q2), non-TTY guidance |
+| `src/processing/first_run.py` | `handle_first_run()` — engine check, TTY wizard, auto-install, STANDBY seed; never touches 03.PROFILES/ (Q2 removed), non-TTY guidance |
 | `src/utils/logging.py` | loguru + `_TeeStream` capture (encoding is a property) + `write_run_logs()` |
 | `src/utils/path_resolver.py` | Timestamped output dirs `<YYMMDD_HHMMSS>_VID` (Q14) |
 
@@ -193,10 +194,46 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 - requirements.txt: only python-dotenv, loguru, PyYAML, rich — Engines vendor
   their own SDK deps (no replicate pin)
 - `ENGINES/` is gitignored (vendored at runtime, separate repos)
-- Legacy profiles with `Model`/`duration_config`/`image_url` blocks are
-  auto-normalized by `normalize_legacy_profile()`
+- Legacy profiles with `Model`/`duration_config`/`image_url`/`params` blocks
+  are auto-normalized by `normalize_legacy_profile()` (params→parameters,
+  top-level fps promoted, duration_min → parameters.duration)
 
 ## Session History
+
+### 2026-09-05 — First-Run No Longer Auto-Activates Profiles
+- Removed `_activate_first_profile_if_none()` (Q2): engine installs now seed
+  02.STANDBY/ only — 03.PROFILES/ is never auto-populated. After a fresh
+  clone + engine install, all profiles live on the STANDBY shelf and the
+  user copies one into 03.PROFILES/ to activate it (existing guidance
+  message path). `activate_profile()` stays in profiles.py (unused for now,
+  kept for the FC-parity surface).
+- Regression test `tests/test_first_run.py` locks the behavior: first run
+  with populated STANDBY leaves 03.PROFILES/ empty. 70 green, ruff+black
+  clean.
+
+### 2026-09-05 — Live-Run 422 Fix (Image List vs String + Legacy Normalization)
+- First live API run attempt hit Replicate 422: `input.image: Invalid type.
+  Expected: string, given: array`. Root cause (engine-replicate, vendored
+  origin/master): `_build_replicate_input` sent URL LISTS to media params that
+  are STRING-typed on every live VID schema (start_image, end_image, image,
+  last_frame — all strings; only reference_* are arrays).
+- Engine fix: `_input_props()` (authenticated, cached, best-effort openapi
+  schema fetch — unauthenticated `models.get` 401s) + `_coerce_media_value()`
+  (string params → first URL; array params → list; unknown schema → URL-count
+  fallback). Tests updated to live-schema shapes + schema-injection cases;
+  52 green, black `--line-length 100` clean.
+- MC fix: `normalize_legacy_profile()` now maps legacy `params:` →
+  `parameters:`, promotes top-level `fps`, maps `duration_min` →
+  `parameters.duration` (int preserved — kling duration schema is an integer
+  enum [5,10]; the old float default would 422). `build_inputs()` default
+  duration 5.0 → 5. 9 new tests (tests/test_profiles.py); 69 green, ruff+black
+  clean.
+- Verified without billing: real legacy profile + real bullet → payload
+  validates cleanly against the live kwaivgi/kling-v2.5-turbo-pro openapi
+  schema (jsonschema Draft7).
+- Active + standby Kling legacy profiles still say `image_url: image`
+  (deprecated-but-valid string key; canonical is `start_image`) — works
+  post-fix; regenerate via AISL compose for the canonical key.
 
 ### 2026-09-03 — Part 3: AISL `[general]` Chain + Docs Sweep
 - AISL (studiolot repo): the endpoint TOML `[general]` table is now inert
@@ -312,23 +349,30 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ## Known Issues & Technical Debt
 
-### Remaining (2026-09-03, after Part 3)
+### Remaining (2026-09-05)
 - `build_inputs()` dynamically imports `engine_{platform}` — inherently fragile
   at module-load time (same issue as FC); the real engine package must already
   be on `sys.path` (via `load_engine()`)
-- Real generation paths (animated progress, `engine.run`, payload save) are
-  structurally FC-identical but only verified up to the API boundary — no
-  live API run in this session
+- Live API generation not yet run (would bill the account); payload verified
+  against the live openapi schema via jsonschema instead
 - `main_verbose.py` at 307 lines — over the 250 soft limit; mirrors FC's
   `main_simple.py` and holds at the 400 hard limit
-- Vendored `ENGINES/engine-replicate` clone is stale (pre-Part-2) — needs
-  `git pull` once the engine-replicate `mc-fc-parity` work is pushed
 - **Unknown-slot parse errors degrade softly** (found in the Part 3 dry-run
   smoke): `read_bullets()` logs a warning but still appends the bullet
   without its references — the bullet silently runs as text-to-video.
   Q9's settled intent was "error the bullet, fail loud". Fix when MC src/
   is next in scope: on `ValueError` from `parse_bullet`, reject the bullet
   (skip append) so the run fails instead of generating the wrong video.
+
+### Resolved (2026-09-05)
+- Replicate 422 "Invalid type. Expected: string, given: array": engine now
+  shapes media params against the model openapi schema (string params get a
+  single URL; array params keep lists) — see session history
+- Legacy `params:`/`fps`/`duration_min` blocks were dropped by the engine
+  contract: `normalize_legacy_profile()` now upgrades them into
+  `parameters:`; profile default duration is int 5, not float 5.0
+- First run auto-activated the first STANDBY profile into 03.PROFILES/
+  (Q2): removed — 03.PROFILES/ is never auto-populated
 
 ### Resolved (Part 3)
 - Endpoint TOML `[general]` was inert metadata: now captured onto bindings,

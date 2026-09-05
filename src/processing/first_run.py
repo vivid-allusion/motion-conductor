@@ -8,7 +8,6 @@ from loguru import logger
 
 from ..auth import get_api_key_interactive
 from ..engine_helpers import load_engine_or_install, print_engine_not_found
-from .profiles import activate_profile, list_standby
 
 
 def handle_first_run(
@@ -18,6 +17,9 @@ def handle_first_run(
     auto_install: str | None,
 ) -> tuple[str, str | None] | None:
     """Check for engine, launch wizard if missing, seed STANDBY profiles.
+
+    Profiles are seeded into 02.STANDBY/ only — 03.PROFILES/ is never
+    auto-populated; the user copies a standby YAML there to activate it.
 
     Returns (platform, api_key) on success, None on non-TTY
     failure (caller should exit).
@@ -54,28 +56,8 @@ def handle_first_run(
     except FileNotFoundError:
         print_engine_not_found(platform)
         logger.info(
-            "Re-run with --install-default-engine=replicate "
-            "to auto-install the default Engine."
+            "Re-run with --install-default-engine=replicate to auto-install the default Engine."
         )
         return None
 
-    _activate_first_profile_if_none()
-
     return platform, api_key
-
-
-def _activate_first_profile_if_none() -> None:
-    """Copy the first sorted STANDBY profile into 03.PROFILES/ when empty."""
-    active_dir = Path("USER-FILES/03.PROFILES")
-    active_yamls = (
-        sorted(active_dir.glob("*.yaml")) + sorted(active_dir.glob("*.yml"))
-        if active_dir.is_dir()
-        else []
-    )
-    if active_yamls:
-        return
-
-    standby = list_standby()
-    if standby:
-        activated = activate_profile(standby[0])
-        logger.info(f"Activated first STANDBY profile: {activated.name}")
