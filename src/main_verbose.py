@@ -155,6 +155,11 @@ def _execute_pipeline(
             current = getattr(msg, "current", 0)
             if current:
                 bar.update(task, completed=current)
+            if getattr(msg, "level", "") == "error":
+                logger.error(text)
+            payload = getattr(msg, "api_payload", None)
+            if payload is not None:
+                logger.info(f"Payload: {payload}")
 
         original = engine._on_progress
         engine._on_progress = on_progress
@@ -250,6 +255,10 @@ def _run_studiolot(args) -> int:
         primary_slot=profile.get("image_url_param") or "image",
     )
     if not bullets:
+        if any(input_dir.rglob("*.md")):
+            raise ValidationError(
+                f"All bullets in {input_dir} were rejected — see errors above"
+            )
         raise FileNotFoundError(f"No .md files found in {input_dir}")
     _handle_preflight_checks(args, bullets, profile)
 
@@ -295,6 +304,11 @@ def _run_standalone(args) -> int:
     _handle_preflight_checks(args, bullets, profile)
 
     if not bullets:
+        if any(input_path.rglob("*.md")):
+            logger.error(
+                f"All bullets in {input_path} were rejected — nothing to process"
+            )
+            return 1
         logger.warning(
             f"No .md files to process. Add .md files to {input_path} and re-run."
         )

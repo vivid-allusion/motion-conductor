@@ -200,13 +200,59 @@ class TestReadBullets:
         assert len(bullets) == 1
         assert bullets[0]["path"].name == "b.md"
 
-    def test_parse_failure_logs_and_continues(self, tmp_path):
+    def test_parse_failure_rejects_bullet(self, tmp_path):
         (tmp_path / "bad.md").write_text("![only](https://example.com/a.jpg)\n")
         (tmp_path / "good.md").write_text("Good prompt\n")
         bullets = read_bullets(tmp_path, dry_run=True)
-        assert len(bullets) == 2
-        assert bullets[0]["prompt"] == ""
-        assert bullets[1]["prompt"] == "Good prompt"
+        assert len(bullets) == 1
+        assert bullets[0]["prompt"] == "Good prompt"
+
+    def test_all_rejected_returns_empty(self, tmp_path):
+        (tmp_path / "bad.md").write_text("![only](https://example.com/a.jpg)\n")
+        assert read_bullets(tmp_path, dry_run=True) == []
+
+    def test_unreachable_primary_url_rejects_bullet(self, tmp_path):
+        bullet = tmp_path / "b.md"
+        bullet.write_text("Prompt\n![](https://example.com/frame.jpg)\n")
+        with patch(
+            "src.processing.bullet_parser.validate_image_urls",
+            return_value=([], ["https://example.com/frame.jpg"]),
+        ):
+            bullets = read_bullets(tmp_path, dry_run=False)
+        assert bullets == []
+
+    def test_unreachable_named_slot_url_rejects_bullet(self, tmp_path):
+        bullet = tmp_path / "b.md"
+        bullet.write_text(
+            "Prompt\n"
+            "![](https://example.com/frame.jpg)\n"
+            "![audio](https://example.com/dead.wav)\n"
+        )
+        with patch(
+            "src.processing.bullet_parser.validate_image_urls",
+            return_value=(["https://example.com/frame.jpg"], ["https://example.com/dead.wav"]),
+        ):
+            bullets = read_bullets(tmp_path, dry_run=False, declared_slots=["audio"])
+        assert bullets == []
+
+    def test_reachable_media_keeps_bullet(self, tmp_path):
+        bullet = tmp_path / "b.md"
+        bullet.write_text(
+            "Prompt\n"
+            "![](https://example.com/frame.jpg)\n"
+            "![audio](https://example.com/music.wav)\n"
+        )
+        with patch(
+            "src.processing.bullet_parser.validate_image_urls",
+            return_value=(
+                ["https://example.com/frame.jpg", "https://example.com/music.wav"],
+                [],
+            ),
+        ):
+            bullets = read_bullets(tmp_path, dry_run=False, declared_slots=["audio"])
+        assert len(bullets) == 1
+        assert bullets[0]["reference_urls"] == ["https://example.com/frame.jpg"]
+        assert bullets[0]["references"] == {"audio": ["https://example.com/music.wav"]}
 
     def test_declared_slots_passed_to_parser(self, tmp_path):
         bullet = tmp_path / "b.md"

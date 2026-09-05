@@ -202,6 +202,25 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ## Session History
 
+### 2026-09-05 — No Silent Media Failures (Fail-Loud Bullet Pipeline)
+- `read_bullets()` now REJECTS a bullet loudly instead of silently changing
+  intent: parse errors skip the bullet (no more empty-prompt bullets), and
+  any unreachable media URL (primary OR named slot — both validated now)
+  rejects the bullet with an error. The old silent paths — stripping dead
+  URLs and "treating as text-to-video" — are gone.
+- Runs fail when every bullet is rejected: standalone returns exit 1,
+  studiolot raises `ValidationError` (previously both soft-exited 0).
+- `_execute_pipeline()` now logs progress events into the per-file `.log`:
+  error-level events and any event carrying `api_payload` (the exact
+  payload dict sent to the endpoint) are written via loguru, so the media
+  actually passed is visible in the run log instead of living only in an
+  overwritten spinner frame.
+- Engine (engine-replicate): error events now carry `api_payload` so failed
+  API calls log the exact payload that was rejected.
+- Tests: parser rejection cases (unreachable primary/named-slot URLs,
+  parse failure, all-rejected), engine payload-on-error test. 77 green
+  (2 pre-existing auth failures on system Python 3.14 only).
+
 ### 2026-09-05 — Engine TOML Catalog Mirrors Live Schemas (21/21)
 - All 21 endpoint TOMLs in engine-replicate were swept against their live
   openapi schemas after the p-video gap (missing `no_op`/`save_audio`/

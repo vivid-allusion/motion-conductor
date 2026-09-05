@@ -204,16 +204,16 @@ def read_bullets(
     primary_slot (from the profile's `image_url_param` key) is the slot name
     that routes to the primary input; unknown alts default there.
     Returns [] (with a warning) when the directory holds no .md files.
+
+    FAILS LOUD: a bullet that cannot be parsed, or that references media
+    URLs the server cannot reach, is REJECTED (logged as an error) — it is
+    never silently downgraded to text-to-video or run without its media.
     """
     md_files = sorted(input_dir.rglob("*.md"))
     result: list[Bullet] = []
+    rejected = 0
     for md_path in md_files:
         content = md_path.read_text(encoding="utf-8")
-        prompt = ""
-        urls: list[str] = []
-        frames: int | None = None
-        duration: int | str | None = None
-        references: dict[str, list[str]] = {}
         try:
             prompt, urls, frames, duration, references = parse_bullet(
                 content,
@@ -222,17 +222,26 @@ def read_bullets(
                 primary_slot=primary_slot,
             )
         except ValueError as e:
-            logger.warning(f"Failed to parse {md_path.name}: {e}")
-        if urls and not dry_run:
-            valid, invalid = validate_image_urls(urls)
-            for url in invalid:
-                logger.warning(f"Unreachable image URL in {md_path.name}: {url}")
-            urls = valid
-            if not urls:
-                logger.warning(
-                    f"No reachable image URLs in {md_path.name} "
-                    f"— treating as text-to-video"
-                )
+            logger.error(f"Rejected {md_path.name}: {e}")
+            rejected += 1
+            continue
+
+        if not dry_run:
+            all_urls = list(urls)
+            for slot_urls in references.values():
+                all_urls.extend(slot_urls)
+            if all_urls:
+                _, invalid = validate_image_urls(all_urls)
+                if invalid:
+                    for url in invalid:
+                        logger.error(f"Unreachable media URL in {md_path.name}: {url}")
+                    logger.error(
+                        f"Rejected {md_path.name}: {len(invalid)} of {len(all_urls)} "
+                        "media URL(s) unreachable — fix the URL or remove the line"
+                    )
+                    rejected += 1
+                    continue
+
         result.append(
             {
                 "path": md_path,
@@ -244,7 +253,12 @@ def read_bullets(
             }
         )
     if not result:
-        logger.warning(f"No .md files found in {input_dir}")
+        if md_files:
+            logger.error(
+                f"All {len(md_files)} bullet file(s) in {input_dir} were rejected"
+            )
+        else:
+            logger.warning(f"No .md files found in {input_dir}")
         return result
     sys.stderr.write(f"Discovered {len(result)} bullet file(s) in {input_dir}\n")
     return result
