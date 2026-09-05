@@ -122,20 +122,12 @@ def _prompt_and_save_key(platform: str) -> str:
 
 
 def _offer_engine_install(platform: str) -> None:
-    """Check if engine package is installed; offer to install if missing."""
+    """Check if engine package is installed; install if missing."""
     spec = importlib.util.find_spec(f"engine_{platform}")
     if spec is not None:
         return
 
-    print(f"\nEngine '{platform}' is not installed.")
-    choice = input("Install now? [Y/n]: ").strip().lower()
-    if choice and choice != "y":
-        print(f"\nEngine required. Install manually:\n"
-              f"  git clone https://github.com/vivid-allusion/engine-{platform}.git "
-              f"ENGINES/engine-{platform}/\n"
-              f"  pip install -r ENGINES/engine-{platform}/requirements.txt\n")
-        sys.exit(1)
-
+    print(f"\nEngine '{platform}' is not installed. Installing...")
     from ..engine_helpers import auto_install_engine
 
     if not auto_install_engine(platform):
