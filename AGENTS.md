@@ -82,7 +82,7 @@ VEHICLE_CONTRACT.md §4d.
 - Corrupted local engine falls back to pip-installed package
 
 ### Supported Platforms
-`replicate`, `fal`, `openrouter`, `google`, `beeble` — new engines added by installing the
+`replicate`, `fal`, `openrouter`, `google`, `beeble`, `evolink` — new engines added by installing the
 corresponding package.
 
 ### Processing Flow
@@ -189,7 +189,7 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   `duration`). No runtime TOML lookup — profiles carry these keys (Q17); the
   engine's endpoint TOML `[general]` slot declarations are Part-3 metadata
 - API keys: `REPLICATE_API_TOKEN` env var (primary), also `FAL_KEY`,
-  `OPENROUTER_API_KEY`, `GOOGLE_API_KEY`, `BEEBLE_API_KEY` for multi-platform
+  `OPENROUTER_API_KEY`, `GOOGLE_API_KEY`, `BEEBLE_API_KEY`, `EVOLINK_API_KEY` for multi-platform
 - .env file: loaded from project root on startup (standalone mode)
 - Interactive wizard saves keys to repo-root `.env`; called from
   `handle_first_run()` and as a fallback in `_run_standalone()`
