@@ -45,6 +45,8 @@ _NON_HTTP_URL = re.compile(
 )
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
+_PRIMARY_ALIASES = {"video", "image", "source", "media", "src", "input"}
+
 
 def _strip_html_comments(
     content: str, warn: "Callable[[str], None] | None" = None
@@ -113,10 +115,11 @@ def _route_image(
     """Route a URL: empty/primary/unknown alt → primary; declared alt → named slot.
 
     Unknown alts default to the primary slot (with a warning) instead of
-    erroring the bullet.
+    erroring the bullet. Generic media-kind alts ("video", "image", "source",
+    ...) are treated as primary markers and never warn.
     """
     alt = alt.strip()
-    if not alt or declared_slots is None or alt == primary_slot:
+    if not alt or declared_slots is None or alt == primary_slot or alt in _PRIMARY_ALIASES:
         urls.append(url)
         return
     if alt in declared_slots:

@@ -116,6 +116,19 @@ class TestParseBullet:
         assert references == {}
         assert any("Unknown reference slot 'foo'" in w for w in warnings)
 
+    def test_media_kind_alt_defaults_to_primary_silently(self):
+        content = "Prompt\n![video](https://example.com/1.jpg)"
+        warnings: list[str] = []
+        _, urls, _, _, references = parse_bullet(
+            content,
+            warn=warnings.append,
+            declared_slots=["reference_image_uri", "alpha_uri"],
+            primary_slot="source_uri",
+        )
+        assert urls == ["https://example.com/1.jpg"]
+        assert references == {}
+        assert warnings == []
+
     def test_primary_slot_name_alt_routes_to_primary(self):
         content = "Prompt\n![image](https://example.com/1.jpg)"
         _, urls, _, _, references = parse_bullet(
