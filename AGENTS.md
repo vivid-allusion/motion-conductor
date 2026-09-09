@@ -355,6 +355,10 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   Docs swept: PHILOSOPHY §3 (retires `frames:`), user-manual
   Markdown-input.md, VEHICLE_CONTRACT §4d, ENGINE_CONTRACT §3/§5.
 - MC side: docs only — AGENTS.md updated (this entry).
+- Closeout verification (2026-09-09): AISL master suite re-run 965 passed / 11
+  pre-existing failures / 14 skipped (zero new failures); ruff clean on all
+  parity files; `duration:` present in PHILOSOPHY.md + Markdown-input.md; MC
+  suite 85 passed on `mc-fc-parity`. Plan closed; TODO.md wiped.
 
 ### 2026-09-03 — Part 2: Video Input Layer (Duration + Named Payload Slots)
 - `bullet_parser.py`: `duration:` line parsed verbatim (int or token like
