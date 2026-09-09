@@ -359,6 +359,12 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   pre-existing failures / 14 skipped (zero new failures); ruff clean on all
   parity files; `duration:` present in PHILOSOPHY.md + Markdown-input.md; MC
   suite 85 passed on `mc-fc-parity`. Plan closed; TODO.md wiped.
+- Mult-loop execution re-verification (2026-09-09, `mc-fc-parity`): phase_3
+  tasks regenerated in TODO.md from `phase_3.md`, every task re-verified
+  against the AISL working tree (R1–R3 source + tests committed; R4 docs
+  present in both repos), final gate re-run: AISL 1232 passed / 11
+  pre-existing failures / 14 skipped (zero new), ruff clean on all touched
+  files, MC suite 85 passed. Whole plan (parts 1–3) closed.
 
 ### 2026-09-03 — Part 2: Video Input Layer (Duration + Named Payload Slots)
 - `bullet_parser.py`: `duration:` line parsed verbatim (int or token like
