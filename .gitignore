@@ -64,6 +64,8 @@ logs/*.pyc
 250915_replicate
 # User data folders — track structure, ignore content
 # User data folders — track structure, ignore content
+USER-FILES/02.STANDBY/*
+!USER-FILES/02.STANDBY/.gitkeep
 USER-FILES/03.PROFILES/*
 !USER-FILES/03.PROFILES/.gitkeep
 USER-FILES/04.INPUT/*
