@@ -179,7 +179,8 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 ## Configuration
 
 - Profiles: YAML files in `USER-FILES/03.PROFILES/` (production) or
-  `USER-FILES/02.STANDBY/` (engine-seeded backup)
+  `USER-FILES/02.STANDBY/` (engine-seeded backup; content gitignored, only
+  `.gitkeep` tracked)
 - Profile format: `platform`, `endpoint`, `parameters` (with `fps`, `duration`),
   `prompt_prefix`, `prompt_suffix`, `pricing`, `paths`
 - Video slot keys (Part 2): top-level `image_url_param` (primary input key;
