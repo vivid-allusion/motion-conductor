@@ -131,3 +131,7 @@ Exactly one profile must be active when running.
 - `natsort` — Natural sorting
 - `pyyaml` — YAML parsing
 - `requests` — HTTP downloads
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) to get involved, and [`ARCHITECTURE.md`](ARCHITECTURE.md) for how the projects fit together.
