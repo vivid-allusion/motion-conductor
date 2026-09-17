@@ -1,8 +1,9 @@
 """Canonical Engine discovery and loading.
 
-Per ENGINE_CONTRACT.md §7a: this is the single canonical implementation of
-load_engine(). Vehicle repos vendor a snapshot copy — update here first,
-then re-vendor.
+Per ENGINE_CONTRACT.md §6/§7a: this is the single canonical implementation of
+load_engine(), maintained in studiolot/pipeline/engine_loader.py. Vehicle
+repos (frame-composer, motion-conductor) vendor a byte-identical snapshot —
+change canonical first, then re-vendor (verify with a three-way diff).
 """
 
 import importlib
@@ -58,6 +59,34 @@ class EngineLoadContext:
     on_progress: Callable[[str], None] | None = None
 
 
+def find_engine_dir(search_paths: list[Path], platform: str | None) -> Path:
+    """Return the first engine-<platform> directory found in search_paths.
+
+    Raises:
+        FileNotFoundError: No Engine directory found in search_paths.
+    """
+    resolved = platform or DEFAULT_PLATFORM
+    engine_dir_name = f"engine-{resolved}"
+    for sp in search_paths:
+        candidate = sp / engine_dir_name
+        if candidate.is_dir():
+            return candidate
+    searched = "\n  ".join(str(sp / engine_dir_name) for sp in search_paths)
+    raise FileNotFoundError(f"Engine '{resolved}' not found. Searched:\n  {searched}")
+
+
+def find_first_engine_dir(search_paths: list[Path]) -> tuple[Path, str] | None:
+    """Return (dir, platform) of the first engine-* directory, or None."""
+    for sp in search_paths:
+        try:
+            for entry in sp.iterdir():
+                if entry.is_dir() and entry.name.startswith("engine-"):
+                    return entry, entry.name.removeprefix("engine-")
+        except OSError:
+            continue
+    return None
+
+
 def load_engine(ctx: EngineLoadContext):
     """Find and load an Engine for the given platform.
 
@@ -73,43 +102,25 @@ def load_engine(ctx: EngineLoadContext):
         ImportError: Engine package exists but cannot be imported.
     """
     resolved = ctx.platform or DEFAULT_PLATFORM
-    engine_dir_name = f"engine-{resolved}"
-
-    engine_dir = None
-    for sp in ctx.search_paths:
-        candidate = sp / engine_dir_name
-        if candidate.is_dir():
-            engine_dir = candidate
-            break
-
-    if engine_dir is None:
-        searched = "\n  ".join(
-            str(sp / engine_dir_name) for sp in ctx.search_paths
-        )
-        raise FileNotFoundError(
-            f"Engine '{resolved}' not found. Searched:\n  {searched}"
-        )
-
+    engine_dir = find_engine_dir(ctx.search_paths, resolved)
     _ensure_engine_dependencies(engine_dir)
+    pkg = _load_engine_package(engine_dir, resolved)
+    return pkg.Engine(
+        profile=ctx.profile,
+        output_dir=ctx.output_dir,
+        api_key=ctx.api_key,
+        on_progress=ctx.on_progress,
+    )
 
+
+def _load_engine_package(engine_dir: Path, platform: str):
+    """Import an engine package from engine_dir, falling back to pip site-packages."""
     root = str(engine_dir)
     if root not in sys.path:
         sys.path.insert(0, root)
 
-    pkg_name = f"engine_{resolved}"
-
-    spec = importlib.util.spec_from_file_location(
-        pkg_name, engine_dir / pkg_name / "__init__.py"
-    )
-    pkg = None
-    if spec is not None:
-        try:
-            pkg = importlib.util.module_from_spec(spec)
-            sys.modules[pkg_name] = pkg
-            spec.loader.exec_module(pkg)
-        except Exception:
-            pkg = None
-
+    pkg_name = f"engine_{platform}"
+    pkg = _exec_from_dir(engine_dir, pkg_name)
     if pkg is None:
         try:
             pkg = importlib.import_module(pkg_name)
@@ -119,14 +130,21 @@ def load_engine(ctx: EngineLoadContext):
                 f"cannot be imported. Check requirements: pip install -r "
                 f"{engine_dir / 'requirements.txt'}"
             ) from None
+    return pkg
 
-    engine = pkg.Engine(
-        profile=ctx.profile,
-        output_dir=ctx.output_dir,
-        api_key=ctx.api_key,
-        on_progress=ctx.on_progress,
-    )
-    return engine
+
+def _exec_from_dir(engine_dir: Path, pkg_name: str):
+    """Exec the package __init__.py from a local clone; None on failure."""
+    spec = importlib.util.spec_from_file_location(pkg_name, engine_dir / pkg_name / "__init__.py")
+    if spec is None:
+        return None
+    try:
+        pkg = importlib.util.module_from_spec(spec)
+        sys.modules[pkg_name] = pkg
+        spec.loader.exec_module(pkg)
+        return pkg
+    except Exception:
+        return None
 
 
 def copy_standby_profiles(
@@ -136,7 +154,7 @@ def copy_standby_profiles(
 
     The engine owns the STANDBY shelf: every load syncs the engine's
     standby profiles over the shelf, filtered by the Vehicle's media type
-    (Motion Conductor → VID, Frame Composer → IMG). Users activate a
+    (Frame Composer → IMG, Motion Conductor → VID). Users activate a
     profile by copying it into 03.PROFILES/ — the shelf itself is not
     user-edited.
 
