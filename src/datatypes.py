@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import TypedDict
 
 
-class Bullet(TypedDict):
-    """A parsed .md bullet file with its extracted data."""
+class Markdown(TypedDict):
+    """A parsed .md Markdown file with its extracted data."""
 
     path: Path
     prompt: str

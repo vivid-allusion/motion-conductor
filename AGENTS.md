@@ -69,7 +69,7 @@
 The Motion Conductor (Vehicle) delegates all API/provider logic to Engine plugins.
 "The Vehicle orchestrates. The Engine executes. The profile configures."
 
-MC is a **video generation Vehicle** — it reads video bullets (markdown files with
+MC is a **video generation Vehicle** — it reads video Markdown files (with
 prompts + image URLs + optional frame counts), loads an Engine, and calls
 `engine.run()` with `InputFile` objects carrying `metadata = {duration, fps}` per
 VEHICLE_CONTRACT.md §4d.
@@ -96,7 +96,7 @@ main() → _run_standalone()
   → load_profile_standalone()     # 03.PROFILES/ only — never falls back;
                                   #   empty → guidance to copy from 02.STANDBY/
   → resolve_input_path()          # profile paths block or USER-FILES/04.INPUT/
-  → read_bullets()                # parse .md inputs (prompt + URLs + frames +
+  → read_markdown()               # parse .md inputs (prompt + URLs + frames +
                                   #   duration + named slots, profile `slots:`)
   → _handle_preflight_checks()    # --cost-estimation / --dry-run → PreflightExit
   → create_timestamped_output_path()  # 05.OUTPUT/<YYMMDD_HHMMSS>_VID/
@@ -109,7 +109,7 @@ Studiolot mode:
 ```
 main() → _run_studiolot()
   → load_profile_studiolot()      # from --profile path
-  → read_bullets()                # HEAD URL validation skipped under --dry-run
+  → read_markdown()               # HEAD URL validation skipped under --dry-run
   → _handle_preflight_checks()    # before any output_dir.mkdir (Q16)
   → output_dir.mkdir()            # only after preflight passes
   → get_api_key()
@@ -125,22 +125,22 @@ relative_dir}`) → rich `Progress` spinner wrapping `engine._on_progress`
 generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ### Video-Specific Input
-- Bullet files carry `frames: N` (deprecated back-compat, converted via fps)
+- Markdown files carry `frames: N` (deprecated back-compat, converted via fps)
   and/or `duration: <value>` — raw value parsed verbatim (int or any token
   like `auto` / `-1`); `duration:` wins over `frames:` (Q8)
 - Named payload slots: `![slot](url)` routes the URL — empty alt, the primary
   slot name (`image_url_param`, e.g. `image`), or an unknown alt all feed the
   primary slot (unknown alt warns and defaults, no longer errors); a declared
   named alt (profile `slots:`) feeds that slot; no schema → primary fallback
-- `read_bullets(primary_slot=...)` takes the profile's `image_url_param`
+- `read_markdown(primary_slot=...)` takes the profile's `image_url_param`
   (default `"image"`); both run modes pass it through
 - `build_inputs()` reads `fps` and `duration` from profile `parameters` block
 - Each `InputFile.metadata` = `{"duration": int|str|float, "fps": int, "relative_dir": str}`
-  — bullet duration passed VERBATIM (vehicle never interprets it)
+  — Markdown-file duration passed VERBATIM (vehicle never interprets it)
 - `InputFile.references` (additive engine field) carries the named-slot map;
   engines still on the old datatype get a loud warning and drop named refs (Q20)
-- `relative_dir` mirrors the bullet's folder structure under the output dir
-- Cost estimation: numeric bullet durations used, token durations (`auto`,
+- `relative_dir` mirrors the Markdown file's folder structure under the output dir
+- Cost estimation: numeric Markdown-file durations used, token durations (`auto`,
   `-1`) fall back to the profile default (Q18)
 - Legacy profiles with `duration_config`/`image_url` blocks are normalized by
   `normalize_legacy_profile()` (`image_url` → `image_url_param`)
@@ -163,14 +163,14 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 | `src/main_verbose.py` | Thin entry point, CLI routing, both run modes, `_execute_pipeline()` + preflight + CLI overrides |
 | `src/cli.py` | Declarative `_ARGUMENTS` list — `--input_dir`, `--output_dir`, `--profile`, `--platform`, `--dry-run`, `--debug`, `--verbose`, `--cost-estimation`, `--no-save-payloads`, `--install-default-engine` (no `--force-png`) |
 | `src/constants.py` | `__version__`, `TIMESTAMP_FORMAT`, `DEFAULT_PLATFORM` (canonical home, Q3), `MEDIA_TYPE = "VID"` (declares which engine standby shelf to seed) |
-| `src/datatypes.py` | `Bullet` TypedDict — path, prompt, reference_urls, frames, duration (raw), references (named slots) |
+| `src/datatypes.py` | `Markdown` TypedDict — path, prompt, reference_urls, frames, duration (raw), references (named slots) |
 | `src/exceptions.py` | `AuthenticationError`, `ConfigurationError`, `ValidationError`, `PreflightExit` |
 | `src/engine_contract.py` | `EngineInputFile` protocol + `validate_input_file()` — fail fast on contract mismatch |
 | `src/engine_loader.py` | Vendored canonical `load_engine()` with `EngineLoadContext`; `copy_standby_profiles(media_type=...)` syncs the engine-owned VID shelf into `02.STANDBY/` on every load |
 | `src/engine_helpers.py` | Discovery (`find_project/vehicle_engines_dir`), `auto_install_engine` (timeout=300), `build_inputs()` (verbatim duration + references + relative_dir + Q20 old-engine warning), `load_engine_or_install`, `print_engine_not_found` |
 | `src/auth/__init__.py` | 4-tier `get_api_key()` (env → pass → .env → AuthenticationError), `SUPPORTED_PLATFORMS`, interactive wizard (`_prompt_platform`, `_offer_engine_install`, `_prompt_and_save_key` → repo-root `.env`) |
 | `src/auth/env.py` | `.env` loading (`get_api_token_from_env`) |
-| `src/processing/bullet_parser.py` | `read_bullets()`, `parse_bullet()`, `validate_image_urls()` — prompt + URLs + `frames:` + `duration:` (verbatim) + alt-text named slots + `declared_slots` validation, `[]` on empty dir, markdown format warnings, HEAD validation skipped on dry-run (Q15) |
+| `src/processing/markdown_parser.py` | `read_markdown()`, `parse_markdown()`, `validate_image_urls()` — prompt + URLs + `frames:` + `duration:` (verbatim) + alt-text named slots + `declared_slots` validation, `[]` on empty dir, markdown format warnings, HEAD validation skipped on dry-run (Q15) |
 | `src/processing/profiles.py` | `load_profile_standalone()` (no STANDBY fallback), `load_profile_studiolot()`, `normalize_legacy_profile()` (`image_url` → `image_url_param`), `activate_profile()` |
 | `src/processing/first_run.py` | `handle_first_run()` — engine check, TTY wizard, auto-install, STANDBY seed; never touches 03.PROFILES/ (Q2 removed), non-TTY guidance |
 | `src/utils/logging.py` | loguru + `_TeeStream` capture (encoding is a property) + `write_run_logs()` |

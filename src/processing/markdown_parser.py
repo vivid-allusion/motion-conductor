@@ -1,6 +1,6 @@
-"""Bullet markdown parsing for video generation.
+"""Markdown-file parsing for video generation.
 
-Parses bullet .md files and extracts:
+Parses Markdown `.md` files and extracts:
 - Text prompt from the first non-empty, non-image line
 - Reference URLs from markdown ![alt](URL) syntax — empty alt, the primary
   slot name, or an unknown alt feeds the primary slot; a declared named alt
@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ..datatypes import Bullet
+from ..datatypes import Markdown
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -115,7 +115,7 @@ def _route_image(
     """Route a URL: empty/primary/unknown alt → primary; declared alt → named slot.
 
     Unknown alts default to the primary slot (with a warning) instead of
-    erroring the bullet. Generic media-kind alts ("video", "image", "source",
+    erroring the Markdown file. Generic media-kind alts ("video", "image", "source",
     ...) are treated as primary markers and never warn.
     """
     alt = alt.strip()
@@ -133,13 +133,13 @@ def _route_image(
     urls.append(url)
 
 
-def parse_bullet(
+def parse_markdown(
     markdown_content: str,
     warn: "Callable[[str], None] | None" = None,
     declared_slots: list[str] | None = None,
     primary_slot: str = "image",
 ) -> tuple[str, list[str], int | None, int | str | None, dict[str, list[str]]]:
-    """Parse a .md bullet, returning (prompt, urls, frames, duration, references).
+    """Parse a .md Markdown file, returning (prompt, urls, frames, duration, references).
 
     Raises:
         ValueError: If no prompt found.
@@ -216,13 +216,13 @@ def validate_image_urls(urls: list[str], timeout: float = 5.0) -> tuple[list[str
     return valid, invalid
 
 
-def read_bullets(
+def read_markdown(
     input_dir: Path,
     dry_run: bool = False,
     declared_slots: list[str] | None = None,
     primary_slot: str = "image",
-) -> list[Bullet]:
-    """Read .md bullets from input_dir, extract prompt + URLs + frames + duration.
+) -> list[Markdown]:
+    """Read .md Markdown files from input_dir, extract prompt + URLs + frames + duration.
 
     declared_slots (from the profile's `slots:` key) enables named-slot
     routing; without it every alt falls back to the primary slot.
@@ -230,17 +230,17 @@ def read_bullets(
     that routes to the primary input; unknown alts default there.
     Returns [] (with a warning) when the directory holds no .md files.
 
-    FAILS LOUD: a bullet that cannot be parsed, or that references media
+    FAILS LOUD: a Markdown file that cannot be parsed, or that references media
     URLs the server cannot reach, is REJECTED (logged as an error) — it is
     never silently downgraded to text-to-video or run without its media.
     """
     md_files = sorted(input_dir.rglob("*.md"))
-    result: list[Bullet] = []
+    result: list[Markdown] = []
     rejected = 0
     for md_path in md_files:
         content = md_path.read_text(encoding="utf-8")
         try:
-            prompt, urls, frames, duration, references = parse_bullet(
+            prompt, urls, frames, duration, references = parse_markdown(
                 content,
                 warn=logger.warning,
                 declared_slots=declared_slots,
@@ -280,10 +280,10 @@ def read_bullets(
     if not result:
         if md_files:
             logger.error(
-                f"All {len(md_files)} bullet file(s) in {input_dir} were rejected"
+                f"All {len(md_files)} Markdown file(s) in {input_dir} were rejected"
             )
         else:
             logger.warning(f"No .md files found in {input_dir}")
         return result
-    sys.stderr.write(f"Discovered {len(result)} bullet file(s) in {input_dir}\n")
+    sys.stderr.write(f"Discovered {len(result)} Markdown file(s) in {input_dir}\n")
     return result

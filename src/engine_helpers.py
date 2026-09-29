@@ -9,7 +9,7 @@ from typing import Any
 
 from loguru import logger
 
-from .datatypes import Bullet
+from .datatypes import Markdown
 from .engine_contract import validate_input_file
 from .engine_loader import EngineLoadContext, copy_standby_profiles, load_engine
 from .constants import MEDIA_TYPE
@@ -99,7 +99,7 @@ def auto_install_engine(platform: str, vehicle_root: Path | None = None) -> bool
 
 
 def build_inputs(
-    bullets: list[Bullet],
+    markdown_files: list[Markdown],
     platform: str,
     input_root: Path | None = None,
     profile: dict[str, Any] | None = None,
@@ -107,7 +107,7 @@ def build_inputs(
     """Construct InputFile objects using the Engine's datatype.
 
     metadata carries {duration, fps} per VEHICLE_CONTRACT.md §4d, plus
-    relative_dir so outputs mirror the input folder structure. The bullet's
+    relative_dir so outputs mirror the input folder structure. The Markdown file's
     raw `duration:` (verbatim) wins over `frames:`/profile default.
     """
     try:
@@ -124,14 +124,14 @@ def build_inputs(
     profile_duration = params.get("duration", 5)
 
     accepts_references = "references" in inspect.signature(InputFile.__init__).parameters
-    if not accepts_references and any(b.get("references") for b in bullets):
+    if not accepts_references and any(b.get("references") for b in markdown_files):
         logger.warning(
             f"Engine '{platform}' does not support named reference slots — "
-            "slot URLs in the bullets are ignored"
+            "slot URLs in the Markdown files are ignored"
         )
 
     inputs = []
-    for b in bullets:
+    for b in markdown_files:
         raw_duration = b.get("duration")
         if raw_duration is not None:
             duration = raw_duration

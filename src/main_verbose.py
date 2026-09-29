@@ -1,7 +1,7 @@
 """Motion Conductor — Engine-based video generation vehicle.
 
 Both studiolot and standalone modes share the same Engine-based execution.
-The Vehicle reads video bullets, loads an Engine, and calls engine.run().
+The Vehicle reads video Markdown files, loads an Engine, and calls engine.run().
 
 Per VEHICLE_CONTRACT.md §4d: InputFile.metadata carries {duration, fps}
 from the profile YAML's parameters block.
@@ -17,7 +17,7 @@ from loguru import logger
 from .auth import get_api_key, get_api_key_interactive
 from .cli import parse_args
 from .constants import DEFAULT_PLATFORM, __version__
-from .datatypes import Bullet
+from .datatypes import Markdown
 from .engine_helpers import (
     build_inputs,
     find_project_engines_dir,
@@ -30,7 +30,7 @@ from .exceptions import (
     PreflightExit,
     ValidationError,
 )
-from .processing.bullet_parser import read_bullets
+from .processing.markdown_parser import read_markdown
 from .processing.first_run import handle_first_run
 from .processing.profiles import (
     load_profile_standalone,
@@ -81,35 +81,35 @@ def _apply_cli_overrides(profile: dict[str, Any], args: Any) -> dict[str, Any]:
     return {**profile, "parameters": params}
 
 
-def _bullet_duration(bullet: Bullet, profile: dict[str, Any]) -> float:
-    """Duration for a bullet: numeric `duration:` verbatim, else frames via
+def _markdown_duration(markdown: Markdown, profile: dict[str, Any]) -> float:
+    """Duration for a Markdown file: numeric `duration:` verbatim, else frames via
     fps, else profile default. Token durations (auto, -1) fall back to the
     profile default for cost estimation only."""
     params = profile.get("parameters", {})
     fps = float(params.get("fps", 24))
     profile_duration = float(params.get("duration", 5.0))
-    raw = bullet.get("duration")
+    raw = markdown.get("duration")
     if isinstance(raw, (int, float)) and raw > 0:
         return float(raw)
-    if bullet["frames"]:
-        return bullet["frames"] / fps
+    if markdown["frames"]:
+        return markdown["frames"] / fps
     return profile_duration
 
 
 def _handle_preflight_checks(
-    args: Any, bullets: list[Bullet], profile: dict[str, Any]
+    args: Any, markdown_files: list[Markdown], profile: dict[str, Any]
 ) -> None:
     if args.cost_estimation:
         cost_per_second = float(profile.get("pricing", {}).get("cost_per_second", 0.0))
-        total = sum(_bullet_duration(b, profile) * cost_per_second for b in bullets)
+        total = sum(_markdown_duration(b, profile) * cost_per_second for b in markdown_files)
         logger.info(
-            f"Estimated cost: {len(bullets)} bullet(s), "
-            f"{sum(_bullet_duration(b, profile) for b in bullets):.1f}s total "
+            f"Estimated cost: {len(markdown_files)} Markdown file(s), "
+            f"{sum(_markdown_duration(b, profile) for b in markdown_files):.1f}s total "
             f"x ${cost_per_second:.4f}/s = ${total:.2f}"
         )
         raise PreflightExit(0)
     if args.dry_run:
-        logger.info(f"DRY RUN -- would process {len(bullets)} bullet file(s)")
+        logger.info(f"DRY RUN -- would process {len(markdown_files)} Markdown file(s)")
         raise PreflightExit(0)
 
 
@@ -125,7 +125,7 @@ def _report_results(results: list[Any]) -> int:
 
 
 def _execute_pipeline(
-    bullets: list[Bullet],
+    markdown_files: list[Markdown],
     engine: Any,
     platform: str,
     profile: dict[str, Any],
@@ -142,7 +142,7 @@ def _execute_pipeline(
         TimeElapsedColumn,
     )
 
-    inputs = build_inputs(bullets, platform, input_root, profile)
+    inputs = build_inputs(markdown_files, platform, input_root, profile)
     total = len(inputs)
 
     with Progress(
@@ -253,26 +253,26 @@ def _run_studiolot(args) -> int:
 
     input_dir = Path(args.input_dir) if args.input_dir else Path(".")
 
-    bullets = read_bullets(
+    markdown_files = read_markdown(
         input_dir,
         dry_run=args.dry_run,
         declared_slots=profile.get("slots"),
         primary_slot=profile.get("image_url_param") or "image",
     )
-    if not bullets:
+    if not markdown_files:
         if any(input_dir.rglob("*.md")):
             raise ValidationError(
-                f"All bullets in {input_dir} were rejected — see errors above"
+                f"All Markdown files in {input_dir} were rejected — see errors above"
             )
         raise FileNotFoundError(f"No .md files found in {input_dir}")
-    _handle_preflight_checks(args, bullets, profile)
+    _handle_preflight_checks(args, markdown_files, profile)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     api_key = get_api_key(platform)
     engine = _resolve_engine_for_studiolot(output_dir, platform, profile, api_key)
 
-    return _execute_pipeline(bullets, engine, platform, profile, output_dir, input_dir)
+    return _execute_pipeline(markdown_files, engine, platform, profile, output_dir, input_dir)
 
 
 def _run_standalone(args) -> int:
@@ -300,18 +300,18 @@ def _run_standalone(args) -> int:
     # ── check inputs before creating output dir ──────────────────────────────
 
     input_path, _ = resolve_input_path(profile)
-    bullets = read_bullets(
+    markdown_files = read_markdown(
         input_path,
         dry_run=args.dry_run,
         declared_slots=profile.get("slots"),
         primary_slot=profile.get("image_url_param") or "image",
     )
-    _handle_preflight_checks(args, bullets, profile)
+    _handle_preflight_checks(args, markdown_files, profile)
 
-    if not bullets:
+    if not markdown_files:
         if any(input_path.rglob("*.md")):
             logger.error(
-                f"All bullets in {input_path} were rejected — nothing to process"
+                f"All Markdown files in {input_path} were rejected — nothing to process"
             )
             return 1
         logger.warning(
@@ -342,7 +342,7 @@ def _run_standalone(args) -> int:
         make_engine_ctx(platform, search_paths, profile, output_dir, api_key)
     )
 
-    return _execute_pipeline(bullets, engine, platform, profile, output_dir, input_path)
+    return _execute_pipeline(markdown_files, engine, platform, profile, output_dir, input_path)
 
 
 if __name__ == "__main__":
