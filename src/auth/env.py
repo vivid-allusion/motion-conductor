@@ -1,4 +1,5 @@
 """Environment variable authentication."""
+
 import os
 from pathlib import Path
 

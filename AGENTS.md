@@ -203,6 +203,34 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ---
 
+## Twin files — agreed vs accepted divergence (W5 M5, 2026-09-30)
+
+W5 phase_5 settled the studiolot/FC/MC twin set. Each row names the file, the
+verdict, and — for a divergence — the one-line reason. **accepted divergence**
+is deliberate: do not "fix" such a file back to the other Vehicle's copy. The
+canonical Engine loader is `~/MISC/studiolot/aisl/engines.py`.
+
+| File | Verdict | Reason |
+|---|---|---|
+| `src/engine_loader.py` | **re-vendored (agreed)** | the *loader half* of `aisl/engines.py`; byte-identical in FC and MC and to the canonical loader body (three-way diff clean), docstring naming the canonical path. |
+| `tests/conftest.py` | **agreed** | already byte-identical (6/6) across the twins — re-vendor was a no-op. |
+| `src/auth/env.py` | **agreed** | the only difference was one blank line; FC's form is now shared. |
+| `src/utils/logging.py` | **accepted divergence** | MC's `log_file_only` + `write_run_logs(generated_paths, output_dir)` vs FC's header/summary writer — different public APIs. |
+| `src/processing/markdown_parser.py` | **accepted divergence** | MC's 289-line parser (7 defs) carries video duration/fps parsing; FC's is 227 lines with 10 defs. |
+| `src/engine_helpers.py` | **accepted divergence** | MC's 218-line helpers (10 defs) add `find_vehicle_engines_dir` and `auto_install_engine(vehicle_root=…)`; FC's are 173 lines with 9 defs. |
+| `src/cli.py` | **accepted divergence** | each generator's own front-end flags (MC's dict table; FC's declarative `_ArgumentSpec`). |
+| `run.py` | **accepted divergence** | each Vehicle's own bootstrap and launch target. |
+| `src/processing/profiles.py` | **accepted divergence** | MC's 86-line video profile with `normalize_legacy_profile` vs FC's 36-line still-image profile. |
+| `src/utils/path_resolver.py` | **accepted divergence** | MC returns `(Path, project_name)` and uses the `_VID` output suffix; FC returns a `Path`. |
+| `src/constants.py` | **accepted divergence** | per-Vehicle identity: `__version__` 1.0.0 vs 2.1.0 and `MEDIA_TYPE` VID vs IMG. |
+| `src/exceptions.py` | **accepted divergence** | MC adds `ValidationError`. |
+| `src/datatypes.py` | **accepted divergence** | the Markdown payload shape: MC adds `frames`/`duration`/`references`. |
+| `src/engine_contract.py` | **accepted divergence** | the per-Vehicle mirror of the contract's interface notes. |
+| `src/processing/first_run.py` | **accepted divergence** | same length, different first-run flows and helper imports (diffed, not assumed). |
+| `src/main_verbose.py` | **slated — kept** by Owner ruling Q3 (2026-09-30) | MC's live entry point (`pyproject.toml` console script, `run.py` target, a test import) — not dead code; no removal, no rename. |
+
+---
+
 ## History
 
 The chronological record (session history, known issues & technical debt,
