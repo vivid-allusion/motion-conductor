@@ -202,7 +202,7 @@ def validate_image_urls(urls: list[str], timeout: float = 5.0) -> tuple[list[str
     """
     valid: list[str] = []
     invalid: list[str] = []
-    headers = {"User-Agent": "MotionConductor/1.0"}
+    headers = {"User-Agent": "VideoGenerator/1.0"}
     for url in urls:
         try:
             req = urllib.request.Request(url, method="HEAD", headers=headers)
