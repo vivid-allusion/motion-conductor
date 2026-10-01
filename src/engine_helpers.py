@@ -13,6 +13,7 @@ from .constants import MEDIA_TYPE
 from .datatypes import Markdown
 from .engine_contract import validate_input_file
 from .engine_loader import EngineLoadContext, copy_standby_profiles, load_engine
+from .exceptions import ConfigurationError
 
 
 def find_project_engines_dir(start_dir: Path, max_depth: int = 10) -> Path | None:
@@ -123,11 +124,26 @@ def build_inputs(
     fps = int(params.get("fps", 24))
     profile_duration = params.get("duration", 5)
 
+    preset_refs = list((profile or {}).get("reference_images") or [])
+    declared_slots = list((profile or {}).get("slots") or [])
+    routes_to_declared_slot = "reference_images" in declared_slots
+
     accepts_references = "references" in inspect.signature(InputFile.__init__).parameters
-    if not accepts_references and any(b.get("references") for b in markdown_files):
+
+    if routes_to_declared_slot and preset_refs and not accepts_references:
+        raise ConfigurationError(
+            f"Engine '{platform}' declares the 'reference_images' slot but its "
+            "InputFile does not accept references — cannot route the profile's "
+            "reference_images without dropping them"
+        )
+
+    if not accepts_references and (
+        any(b.get("references") for b in markdown_files) or preset_refs
+    ):
         logger.warning(
             f"Engine '{platform}' does not support named reference slots — "
-            "slot URLs in the Markdown files are ignored"
+            "slot URLs in the Markdown files are ignored and the profile's "
+            "reference_images fall back to reference_urls"
         )
 
     inputs = []
@@ -139,10 +155,20 @@ def build_inputs(
             duration = b["frames"] / fps
         else:
             duration = profile_duration
+        references = dict(b.get("references") or {})
+        reference_urls = list(b["reference_urls"])
+        if preset_refs:
+            if routes_to_declared_slot:
+                references["reference_images"] = [
+                    *references.get("reference_images", []),
+                    *preset_refs,
+                ]
+            else:
+                reference_urls = [*reference_urls, *preset_refs]
         kwargs: dict[str, Any] = {
             "path": b["path"],
             "prompt": b["prompt"],
-            "reference_urls": b["reference_urls"],
+            "reference_urls": reference_urls,
             "metadata": {
                 "duration": duration,
                 "fps": fps,
@@ -150,7 +176,7 @@ def build_inputs(
             },
         }
         if accepts_references:
-            kwargs["references"] = b.get("references") or {}
+            kwargs["references"] = references
         inputs.append(InputFile(**kwargs))
     return inputs
 

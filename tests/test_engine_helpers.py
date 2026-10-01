@@ -5,7 +5,10 @@ import types
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from src.engine_helpers import build_inputs
+from src.exceptions import ConfigurationError
 from src.main_verbose import _markdown_duration
 
 
@@ -113,6 +116,89 @@ class TestBuildInputsReferences:
         ):
             build_inputs([_markdown()], "replicate", profile=PROFILE)
         mock_logger.warning.assert_not_called()
+
+
+class TestBuildInputsPresetReferenceImages:
+    """The profile's top-level `reference_images` merge (GENERATOR_CONTRACT §2f)."""
+
+    PRESET_REFS = ["https://x.com/preset-1.jpg", "https://x.com/preset-2.jpg"]
+
+    def _profile(self, **overrides):
+        base = {"parameters": {"fps": 24, "duration": 5.0}}
+        base.update(overrides)
+        return base
+
+    def test_declared_slot_appends_preset_refs_after_own(self):
+        markdown = _markdown(
+            reference_urls=["https://x.com/primary.jpg"],
+            references={"reference_images": ["https://x.com/own.jpg"]},
+        )
+        profile = self._profile(
+            slots=["reference_images"], reference_images=self.PRESET_REFS
+        )
+        with _patched_engine(FakeInputFile):
+            inputs = build_inputs([markdown], "replicate", profile=profile)
+        assert inputs[0].references["reference_images"] == [
+            "https://x.com/own.jpg",
+            *self.PRESET_REFS,
+        ]
+        assert inputs[0].reference_urls == ["https://x.com/primary.jpg"]
+
+    def test_no_declared_slot_appends_preset_refs_to_reference_urls(self):
+        markdown = _markdown(reference_urls=["https://x.com/primary.jpg"])
+        profile = self._profile(reference_images=["https://x.com/preset-1.jpg"])
+        with _patched_engine(FakeInputFile):
+            inputs = build_inputs([markdown], "replicate", profile=profile)
+        assert inputs[0].reference_urls == [
+            "https://x.com/primary.jpg",
+            "https://x.com/preset-1.jpg",
+        ]
+        assert inputs[0].references == {}
+
+    def test_preset_refs_merge_into_every_input(self):
+        profile = self._profile(reference_images=["https://x.com/preset-1.jpg"])
+        markdowns = [
+            _markdown(path=Path("a.md"), reference_urls=["https://x.com/a.jpg"]),
+            _markdown(path=Path("b.md"), reference_urls=["https://x.com/b.jpg"]),
+        ]
+        with _patched_engine(FakeInputFile):
+            inputs = build_inputs(markdowns, "replicate", profile=profile)
+        assert inputs[0].reference_urls == [
+            "https://x.com/a.jpg",
+            "https://x.com/preset-1.jpg",
+        ]
+        assert inputs[1].reference_urls == [
+            "https://x.com/b.jpg",
+            "https://x.com/preset-1.jpg",
+        ]
+
+    def test_absent_preset_refs_leave_inputs_unchanged(self):
+        markdown = _markdown(reference_urls=["https://x.com/primary.jpg"])
+        with _patched_engine(FakeInputFile):
+            inputs = build_inputs([markdown], "replicate", profile=PROFILE)
+        assert inputs[0].reference_urls == ["https://x.com/primary.jpg"]
+        assert inputs[0].references == {}
+
+    def test_old_engine_with_preset_refs_warns_and_falls_back(self):
+        markdown = _markdown(reference_urls=["https://x.com/primary.jpg"])
+        profile = self._profile(reference_images=["https://x.com/preset-1.jpg"])
+        with patch("src.engine_helpers.logger") as mock_logger, _patched_engine(
+            OldInputFile
+        ):
+            inputs = build_inputs([markdown], "replicate", profile=profile)
+        assert inputs[0].reference_urls == [
+            "https://x.com/primary.jpg",
+            "https://x.com/preset-1.jpg",
+        ]
+        mock_logger.warning.assert_called_once()
+
+    def test_declared_slot_with_old_engine_fails_loud(self):
+        profile = self._profile(
+            slots=["reference_images"], reference_images=["https://x.com/preset-1.jpg"]
+        )
+        with _patched_engine(OldInputFile):
+            with pytest.raises(ConfigurationError):
+                build_inputs([_markdown()], "replicate", profile=profile)
 
 
 class TestMarkdownDurationCost:
