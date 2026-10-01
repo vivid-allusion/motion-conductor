@@ -35,3 +35,7 @@ No blocking questions.
 ## phase_5.md
 
 No blocking questions.
+
+## phase_6.md
+
+No blocking questions.
