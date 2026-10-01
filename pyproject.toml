@@ -1,7 +1,7 @@
 [project]
-name = "motion-conductor"
+name = "video-generator"
 version = "1.0.0"
-description = "Vivid Allusion Motion Conductor"
+description = "Vivid Allusion Video Generator"
 requires-python = ">=3.10"
 dependencies = [
     "loguru",
@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-motion-conductor = "src.main_verbose:main"
+video-generator = "src.main_verbose:main"
 
 [tool.ruff]
 target-version = "py310"

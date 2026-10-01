@@ -28,8 +28,8 @@ def find_project_engines_dir(start_dir: Path, max_depth: int = 10) -> Path | Non
     return None
 
 
-def find_vehicle_engines_dir() -> Path:
-    """Return <vehicle-root>/ENGINES/."""
+def find_generator_engines_dir() -> Path:
+    """Return <generator-root>/ENGINES/."""
     return Path(__file__).resolve().parent.parent / "ENGINES"
 
 
@@ -58,10 +58,10 @@ def print_engine_not_found(platform: str) -> None:
     sys.stderr.write("".join(lines))
 
 
-def auto_install_engine(platform: str, vehicle_root: Path | None = None) -> bool:
-    if vehicle_root is None:
-        vehicle_root = Path(__file__).resolve().parent.parent
-    engines_dir = vehicle_root / "ENGINES"
+def auto_install_engine(platform: str, generator_root: Path | None = None) -> bool:
+    if generator_root is None:
+        generator_root = Path(__file__).resolve().parent.parent
+    engines_dir = generator_root / "ENGINES"
     engines_dir.mkdir(exist_ok=True)
     target = engines_dir / f"engine-{platform}"
 
@@ -106,7 +106,7 @@ def build_inputs(
 ) -> list[Any]:
     """Construct InputFile objects using the Engine's datatype.
 
-    metadata carries {duration, fps} per VEHICLE_CONTRACT.md §4d, plus
+    metadata carries {duration, fps} per GENERATOR_CONTRACT.md §4d, plus
     relative_dir so outputs mirror the input folder structure. The Markdown file's
     raw `duration:` (verbatim) wins over `frames:`/profile default.
     """

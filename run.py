@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Convenience wrapper to run the Motion Conductor tool.
+Convenience wrapper to run the Video Generator tool.
 Automatically handles complete environment setup - zero manual steps required.
 
 This script:

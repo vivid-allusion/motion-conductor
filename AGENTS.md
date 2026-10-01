@@ -66,19 +66,19 @@
 ## Architecture: Engine Interface
 
 ### Core Concept
-The Motion Conductor (Vehicle) delegates all API/provider logic to Engine plugins.
-"The Vehicle orchestrates. The Engine executes. The profile configures."
+The Video Generator (Generator) delegates all API/provider logic to Engine plugins.
+"The Generator orchestrates. The Engine executes. The profile configures."
 
-MC is a **video generation Vehicle** — it reads video Markdown files (with
+VG is a **video generation Generator** — it reads video Markdown files (with
 prompts + image URLs + optional frame counts), loads an Engine, and calls
 `engine.run()` with `InputFile` objects carrying `metadata = {duration, fps}` per
-VEHICLE_CONTRACT.md §4d.
+GENERATOR_CONTRACT.md §4d.
 
 ### Engine Loading
 - `src/engine_loader.py` — canonical `load_engine()` implementation, vendored
-  from studiolot. Mirrors FC's loader exactly.
+  from studiolot. Mirrors IG's loader exactly.
 - Searches `search_paths` for `engine-<platform>/` directories
-- Local clones take precedence over pip-installed packages (VEHICLE_CONTRACT §2b)
+- Local clones take precedence over pip-installed packages (GENERATOR_CONTRACT §2b)
 - Corrupted local engine falls back to pip-installed package
 
 ### Supported Platforms
@@ -122,7 +122,7 @@ main() → _run_studiolot()
 relative_dir}`) → rich `Progress` spinner wrapping `engine._on_progress`
 (in-place task description, restored in finally) → `engine.run(inputs)` →
 `_report_results()` → `write_run_logs()` writes `<file>.log` beside every
-generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
+generated video (fallback `video_generator_<ts>.log` when nothing generated).
 
 ### Video-Specific Input
 - Markdown files carry `frames: N` (deprecated back-compat, converted via fps)
@@ -136,7 +136,7 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
   (default `"image"`); both run modes pass it through
 - `build_inputs()` reads `fps` and `duration` from profile `parameters` block
 - Each `InputFile.metadata` = `{"duration": int|str|float, "fps": int, "relative_dir": str}`
-  — Markdown-file duration passed VERBATIM (vehicle never interprets it)
+  — Markdown-file duration passed VERBATIM (generator never interprets it)
 - `InputFile.references` (additive engine field) carries the named-slot map;
   engines still on the old datatype get a loud warning and drop named refs (Q20)
 - `relative_dir` mirrors the Markdown file's folder structure under the output dir
@@ -167,7 +167,7 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 | `src/exceptions.py` | `AuthenticationError`, `ConfigurationError`, `ValidationError`, `PreflightExit` |
 | `src/engine_contract.py` | `EngineInputFile` protocol + `validate_input_file()` — fail fast on contract mismatch |
 | `src/engine_loader.py` | Vendored canonical `load_engine()` with `EngineLoadContext`; `copy_standby_profiles(media_type=...)` syncs the engine-owned VID shelf into `02.STANDBY/` on every load |
-| `src/engine_helpers.py` | Discovery (`find_project/vehicle_engines_dir`), `auto_install_engine` (timeout=300), `build_inputs()` (verbatim duration + references + relative_dir + Q20 old-engine warning), `load_engine_or_install`, `print_engine_not_found` |
+| `src/engine_helpers.py` | Discovery (`find_project/generator_engines_dir`), `auto_install_engine` (timeout=300), `build_inputs()` (verbatim duration + references + relative_dir + Q20 old-engine warning), `load_engine_or_install`, `print_engine_not_found` |
 | `src/auth/__init__.py` | 4-tier `get_api_key()` (env → pass → .env → AuthenticationError), `SUPPORTED_PLATFORMS`, interactive wizard (`_prompt_platform`, `_offer_engine_install`, `_prompt_and_save_key` → repo-root `.env`) |
 | `src/auth/env.py` | `.env` loading (`get_api_token_from_env`) |
 | `src/processing/markdown_parser.py` | `read_markdown()`, `parse_markdown()`, `validate_image_urls()` — prompt + URLs + `frames:` + `duration:` (verbatim) + alt-text named slots + `declared_slots` validation, `[]` on empty dir, markdown format warnings, HEAD validation skipped on dry-run (Q15) |
@@ -205,29 +205,29 @@ generated video (fallback `motion_conductor_<ts>.log` when nothing generated).
 
 ## Twin files — agreed vs accepted divergence (W5 M5, 2026-09-30)
 
-W5 phase_5 settled the studiolot/FC/MC twin set. Each row names the file, the
+W5 phase_5 settled the studiolot/IG/VG twin set. Each row names the file, the
 verdict, and — for a divergence — the one-line reason. **accepted divergence**
-is deliberate: do not "fix" such a file back to the other Vehicle's copy. The
+is deliberate: do not "fix" such a file back to the other Generator's copy. The
 canonical Engine loader is `~/MISC/studiolot/aisl/engines.py`.
 
 | File | Verdict | Reason |
 |---|---|---|
-| `src/engine_loader.py` | **re-vendored (agreed)** | the *loader half* of `aisl/engines.py`; byte-identical in FC and MC and to the canonical loader body (three-way diff clean), docstring naming the canonical path. |
+| `src/engine_loader.py` | **re-vendored (agreed)** | the *loader half* of `aisl/engines.py`; byte-identical in IG and VG and to the canonical loader body (three-way diff clean), docstring naming the canonical path. |
 | `tests/conftest.py` | **agreed** | already byte-identical (6/6) across the twins — re-vendor was a no-op. |
-| `src/auth/env.py` | **agreed** | the only difference was one blank line; FC's form is now shared. |
-| `src/utils/logging.py` | **accepted divergence** | MC's `log_file_only` + `write_run_logs(generated_paths, output_dir)` vs FC's header/summary writer — different public APIs. |
-| `src/processing/markdown_parser.py` | **accepted divergence** | MC's 289-line parser (7 defs) carries video duration/fps parsing; FC's is 227 lines with 10 defs. |
-| `src/engine_helpers.py` | **accepted divergence** | MC's 218-line helpers (10 defs) add `find_vehicle_engines_dir` and `auto_install_engine(vehicle_root=…)`; FC's are 173 lines with 9 defs. |
-| `src/cli.py` | **accepted divergence** | each generator's own front-end flags (MC's dict table; FC's declarative `_ArgumentSpec`). |
-| `run.py` | **accepted divergence** | each Vehicle's own bootstrap and launch target. |
-| `src/processing/profiles.py` | **accepted divergence** | MC's 86-line video profile with `normalize_legacy_profile` vs FC's 36-line still-image profile. |
-| `src/utils/path_resolver.py` | **accepted divergence** | MC returns `(Path, project_name)` and uses the `_VID` output suffix; FC returns a `Path`. |
-| `src/constants.py` | **accepted divergence** | per-Vehicle identity: `__version__` 1.0.0 vs 2.1.0 and `MEDIA_TYPE` VID vs IMG. |
-| `src/exceptions.py` | **accepted divergence** | MC adds `ValidationError`. |
-| `src/datatypes.py` | **accepted divergence** | the Markdown payload shape: MC adds `frames`/`duration`/`references`. |
-| `src/engine_contract.py` | **accepted divergence** | the per-Vehicle mirror of the contract's interface notes. |
+| `src/auth/env.py` | **agreed** | the only difference was one blank line; IG's form is now shared. |
+| `src/utils/logging.py` | **accepted divergence** | VG's `log_file_only` + `write_run_logs(generated_paths, output_dir)` vs IG's header/summary writer — different public APIs. |
+| `src/processing/markdown_parser.py` | **accepted divergence** | VG's 289-line parser (7 defs) carries video duration/fps parsing; IG's is 227 lines with 10 defs. |
+| `src/engine_helpers.py` | **accepted divergence** | VG's 218-line helpers (10 defs) add `find_generator_engines_dir` and `auto_install_engine(generator_root=…)`; IG's are 173 lines with 9 defs. |
+| `src/cli.py` | **accepted divergence** | each generator's own front-end flags (VG's dict table; IG's declarative `_ArgumentSpec`). |
+| `run.py` | **accepted divergence** | each Generator's own bootstrap and launch target. |
+| `src/processing/profiles.py` | **accepted divergence** | VG's 86-line video profile with `normalize_legacy_profile` vs IG's 36-line still-image profile. |
+| `src/utils/path_resolver.py` | **accepted divergence** | VG returns `(Path, project_name)` and uses the `_VID` output suffix; IG returns a `Path`. |
+| `src/constants.py` | **accepted divergence** | per-Generator identity: `__version__` 1.0.0 vs 2.1.0 and `MEDIA_TYPE` VID vs IMG. |
+| `src/exceptions.py` | **accepted divergence** | VG adds `ValidationError`. |
+| `src/datatypes.py` | **accepted divergence** | the Markdown payload shape: VG adds `frames`/`duration`/`references`. |
+| `src/engine_contract.py` | **accepted divergence** | the per-Generator mirror of the contract's interface notes. |
 | `src/processing/first_run.py` | **accepted divergence** | same length, different first-run flows and helper imports (diffed, not assumed). |
-| `src/main_verbose.py` | **slated — kept** by Owner ruling Q3 (2026-09-30) | MC's live entry point (`pyproject.toml` console script, `run.py` target, a test import) — not dead code; no removal, no rename. |
+| `src/main_verbose.py` | **slated — kept** by Owner ruling Q3 (2026-09-30) | VG's live entry point (`pyproject.toml` console script, `run.py` target, a test import) — not dead code; no removal, no rename. |
 
 ---
 

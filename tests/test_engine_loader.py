@@ -72,7 +72,7 @@ class TestCopyStandbyProfiles:
         source = tmp_path / "engine"
         pkg = self._make_fake_pkg(source)
         with patch("src.engine_loader.importlib.import_module", return_value=pkg):
-            count = copy_standby_profiles("replicate", vehicle_root=tmp_path)
+            count = copy_standby_profiles("replicate", generator_root=tmp_path)
         assert count == 2
         dest = tmp_path / "USER-FILES" / "02.STANDBY"
         assert sorted(p.name for p in dest.glob("*.yaml")) == ["one.yaml", "two.yaml"]
@@ -84,7 +84,7 @@ class TestCopyStandbyProfiles:
         dest.mkdir(parents=True)
         (dest / "existing.yaml").write_text("keep: me\n")
         with patch("src.engine_loader.importlib.import_module", return_value=pkg):
-            count = copy_standby_profiles("replicate", vehicle_root=tmp_path)
+            count = copy_standby_profiles("replicate", generator_root=tmp_path)
         assert count == 2
         assert (dest / "one.yaml").exists()
         assert (dest / "two.yaml").exists()
@@ -104,7 +104,7 @@ class TestCopyStandbyProfiles:
         (standby / "one.yaml").write_text("a: 1\n")
         pkg = types.SimpleNamespace(list_standby_profiles=list_standby_profiles)
         with patch("src.engine_loader.importlib.import_module", return_value=pkg):
-            count = copy_standby_profiles("replicate", vehicle_root=tmp_path, media_type="VID")
+            count = copy_standby_profiles("replicate", generator_root=tmp_path, media_type="VID")
         assert count == 1
         assert calls == ["VID"]
 
@@ -113,4 +113,4 @@ class TestCopyStandbyProfiles:
             "src.engine_loader.importlib.import_module",
             side_effect=ImportError("nope"),
         ):
-            assert copy_standby_profiles("replicate", vehicle_root=tmp_path) == 0
+            assert copy_standby_profiles("replicate", generator_root=tmp_path) == 0

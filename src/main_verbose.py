@@ -1,9 +1,9 @@
-"""Motion Conductor — Engine-based video generation vehicle.
+"""Video Generator — Engine-based video generation generator.
 
 Both studiolot and standalone modes share the same Engine-based execution.
-The Vehicle reads video Markdown files, loads an Engine, and calls engine.run().
+The Generator reads video Markdown files, loads an Engine, and calls engine.run().
 
-Per VEHICLE_CONTRACT.md §4d: InputFile.metadata carries {duration, fps}
+Per GENERATOR_CONTRACT.md §4d: InputFile.metadata carries {duration, fps}
 from the profile YAML's parameters block.
 """
 
@@ -210,7 +210,7 @@ def main() -> int:
     setup_logging(debug=args.debug, verbose=args.verbose)
 
     logger.debug("=" * 60)
-    logger.debug(f"Motion Conductor — Video Generation v{__version__}")
+    logger.debug(f"Video Generator — Video Generation v{__version__}")
     logger.debug("=" * 60)
 
     try:

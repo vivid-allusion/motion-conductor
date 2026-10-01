@@ -62,7 +62,7 @@ _ARGUMENTS: list[dict] = [
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Motion Conductor — Video Generation"
+        description="Video Generator — Video Generation"
     )
     parser.set_defaults(save_payloads=True)
 

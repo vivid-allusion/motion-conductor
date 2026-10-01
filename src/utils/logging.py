@@ -107,6 +107,6 @@ def write_run_logs(generated_paths: list[Path], output_dir: Path) -> list[Path]:
         return written
 
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_path = output_dir / f"motion_conductor_{ts}.log"
+    log_path = output_dir / f"video_generator_{ts}.log"
     log_path.write_text(text)
     return [log_path]
