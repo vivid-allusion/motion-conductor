@@ -9,10 +9,10 @@ from typing import Any
 
 from loguru import logger
 
+from .constants import MEDIA_TYPE
 from .datatypes import Markdown
 from .engine_contract import validate_input_file
 from .engine_loader import EngineLoadContext, copy_standby_profiles, load_engine
-from .constants import MEDIA_TYPE
 
 
 def find_project_engines_dir(start_dir: Path, max_depth: int = 10) -> Path | None:

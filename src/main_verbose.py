@@ -30,8 +30,8 @@ from .exceptions import (
     PreflightExit,
     ValidationError,
 )
-from .processing.markdown_parser import read_markdown
 from .processing.first_run import handle_first_run
+from .processing.markdown_parser import read_markdown
 from .processing.profiles import (
     load_profile_standalone,
     load_profile_studiolot,

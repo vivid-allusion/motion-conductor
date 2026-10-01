@@ -11,9 +11,9 @@ This script:
 Usage: python3 run.py [args]
 """
 
-import sys
-import subprocess
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 
