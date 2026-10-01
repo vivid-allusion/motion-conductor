@@ -240,6 +240,9 @@ canonical Engine loader is `~/MISC/studiolot/hc/engines.py`.
 - 2026-10-01 · phase_2 (M2, studiolot): amended the shipped-default + scaffold
   suites to 24 with per-stem media checks scoped, never blanket-relaxed
   (`705a128`); two-file pytest 15 passed + ruff clean.
+- 2026-10-01 · phase_3 (M3, studiolot): locked the W95 schema round-trip
+  (`tests/test_preset_reference_media.py`, `8dc5045`); §6 proof reproduced,
+  `19 passed` + ruff clean. No `hc/` change.
 
 ## History
 
