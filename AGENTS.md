@@ -239,7 +239,8 @@ canonical Engine loader is `~/MISC/studiolot/hc/engines.py`.
   M3 `8dc5045` — durable schema lock (`test_preset_reference_media.py`);
   M4 `2592c2e` — VG `build_inputs` merges profile `reference_images` (declared
   slot else `reference_urls`; `ConfigurationError` when unroutable).
-  Gates: studiolot green; VG 91 passed + ruff clean. Docs land at phase_6.
+  Gates (phase_5, both repos): VG 91 passed, studiolot 2039 passed / 24 skipped,
+  both ruff clean. Docs land at phase_6.
 
 ## History
 
