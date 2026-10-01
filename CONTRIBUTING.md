@@ -107,10 +107,13 @@ IDs. An Engine's endpoint catalog must mirror the provider's real API.
 
 ## Prompt presets
 
-Presets are `.preset` files (TOML syntax) holding only `name`, `media_type`
-(`image` / `video` / `text`), `prefix`, and `suffix`. They deliberately carry no
-model, parameters, or paths, so a preset outlives the models it was written
-against.
+Presets are `.preset` files (TOML syntax) authored and shipped by **studiolot**;
+the Generator repos carry no preset code. A preset holds `name`, `media_type`
+(`image` / `video` / `text`), `description`, `reference_media`, `prefix`, and
+`suffix` (the W95 schema). It deliberately carries no model, parameters, or
+paths, so a preset outlives the models it was written against. `description` is
+author-facing only; `reference_media` composes to the profile's
+`reference_images`.
 
 ## Reporting bugs
 

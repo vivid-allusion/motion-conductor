@@ -10,6 +10,31 @@
 
 ## Session History
 
+### 2026-10-01 — W98: Camera-movement presets + `reference_images` merge (cross-repo)
+- Six Owner-scoped camera presets (Dolly in/out/left/right, Handheld, Orbit) ship
+  as studiolot's bundled **video** defaults: `media_type = "video"`,
+  `reference_media = ""` (words-only); `presets.order` 18 → 24
+  (`~/MISC/studiolot` commit `ac87c70`). The image panel is unchanged — the six
+  filter out for image generators.
+- Studiolot's shipped-default + project-init scaffold tests were amended (never
+  blanket-relaxed) to the 24-preset world with per-stem media checks
+  (`705a128`); a durable schema lock (`tests/test_preset_reference_media.py`,
+  `8dc5045`) pins the W95 round-trip and `compose_profile` `reference_images`
+  emit/omit behaviour.
+- VG implements `GENERATOR_CONTRACT.md` §2f: `build_inputs` merges the composed
+  profile's top-level `reference_images` into each input **after** its own
+  references — into the declared `reference_images` slot when declared, else
+  `reference_urls` — and raises `ConfigurationError` when a declared slot cannot
+  be routed (never a silent drop) (`2592c2e`). VG adds no preset parsing and no
+  `--preset` flag; the profile's prompt wrap path is unchanged.
+- Cross-repo commit model: the M1–M3 halves commit in studiolot, the M4 code +
+  plan/docs in VG (this repo). Gates: VG 91 passed + ruff clean; studiolot 2039
+  passed / 24 skipped + ruff clean.
+- Closure: `~/PLATFORM/theia-platform/docs/handoffs/W98-mc-camera-presets-closure.md`.
+- Stale prose: `CONTRIBUTING.md`'s preset-schema paragraph (the old four-field
+  shape) was refreshed to the W95 six-field schema, and was corrected to say the
+  presets are studiolot-owned (the Generator repos carry no preset code).
+
 ### 2026-09-05 — No Silent Media Failures (Fail-Loud Bullet Pipeline)
 - `read_bullets()` now REJECTS a bullet loudly instead of silently changing
   intent: parse errors skip the bullet (no more empty-prompt bullets), and
