@@ -233,12 +233,13 @@ canonical Engine loader is `~/MISC/studiolot/hc/engines.py`.
 
 ## W98 camera presets — loop session notes
 
-- 2026-10-01 · W98 (cross-repo; the M1–M3 studiolot halves committed there):
+- 2026-10-01 · W98 (cross-repo; M1–M3 committed in studiolot, M4 in VG):
   M1 `ac87c70` — six video presets + `presets.order` 18→24, words-only;
   M2 `705a128` — default/scaffold suites → 24, per-media scoped not relaxed;
-  M3 `8dc5045` — durable schema round-trip lock (`test_preset_reference_media.py`).
-  Studiolot gates green; VG gate 85 passed + ruff clean. M4 (VG `reference_images`
-  merge) + docs land in VG; durable record in `docs/HISTORY.md` at phase_6.
+  M3 `8dc5045` — durable schema lock (`test_preset_reference_media.py`);
+  M4 `2592c2e` — VG `build_inputs` merges profile `reference_images` (declared
+  slot else `reference_urls`; `ConfigurationError` when unroutable).
+  Gates: studiolot green; VG 91 passed + ruff clean. Docs land at phase_6.
 
 ## History
 

@@ -19,3 +19,15 @@ No blocking questions.
 **USER RESPONSE:**
 ```
 ```
+
+## phase_4.md
+
+1. R4 says "raise or warn loudly" for a declared-but-unroutable slot — which exception type should the raise use?
+2. R6(c) wants the existing Q20 warning path to fire for an old Engine that receives preset `reference_images`; should that reuse the one existing `logger.warning` call or add a second?
+
+**AGENT ANSWER:** 1 — `ConfigurationError`; a profile declaring a slot the loaded Engine cannot honour is invalid configuration for that Engine, matching `src/processing/profiles.py` ("Raised when configuration is invalid or missing").
+**AGENT ANSWER:** 2 — extend the single existing warning condition to cover preset refs (one call), so `test_warning_when_old_engine_drops_named_slots` and `test_old_engine_without_named_refs_stays_silent` stay green and R6(c) is a one-warning assertion.
+
+**USER RESPONSE:**
+```
+```
