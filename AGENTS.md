@@ -231,6 +231,13 @@ canonical Engine loader is `~/MISC/studiolot/hc/engines.py`.
 
 ---
 
+## W98 camera presets — loop session notes
+
+- 2026-10-01 · phase_1 (M1, studiolot): authored six `media_type = "video"`
+  presets (`dolly-in/out/left/right`, `handheld`, `orbit`) + `presets.order`
+  18→24 (`ac87c70`); words-only (`reference_media = ""`). VG untouched; gate
+  85 passed + ruff clean. Durable record lands in `docs/HISTORY.md` at phase_6.
+
 ## History
 
 The chronological record (session history, known issues & technical debt,
