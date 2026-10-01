@@ -237,6 +237,9 @@ canonical Engine loader is `~/MISC/studiolot/hc/engines.py`.
   presets (`dolly-in/out/left/right`, `handheld`, `orbit`) + `presets.order`
   18→24 (`ac87c70`); words-only (`reference_media = ""`). VG untouched; gate
   85 passed + ruff clean. Durable record lands in `docs/HISTORY.md` at phase_6.
+- 2026-10-01 · phase_2 (M2, studiolot): amended the shipped-default + scaffold
+  suites to 24 with per-stem media checks scoped, never blanket-relaxed
+  (`705a128`); two-file pytest 15 passed + ruff clean.
 
 ## History
 
