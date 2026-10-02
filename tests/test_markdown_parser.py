@@ -220,6 +220,117 @@ class TestParseMarkdown:
             parse_markdown(content)
 
 
+class TestStudioMarksBlock:
+    """The IDE's trailing `studio:` cull-marks block is skipped whole."""
+
+    _BLOCK = (
+        "---\n"
+        "studio:\n"
+        "  marks:\n"
+        "    rating: 3\n"
+        "    colors: [green, red]\n"
+        '    emoji: ["\U0001f600", "\U0001f4a9"]\n'
+        "---\n"
+    )
+
+    def test_block_skipped_matches_blockless_file(self):
+        base = "A detective in a dim office\n![](https://example.com/a.jpg)\n"
+        warnings: list[str] = []
+        with_block = parse_markdown(base + "\n" + self._BLOCK, warn=warnings.append)
+        without_block = parse_markdown(base)
+        assert with_block == without_block
+        assert warnings == []
+
+    def test_block_is_never_a_url_or_prompt(self):
+        content = "Prompt\n" + self._BLOCK
+        prompt, urls, frames, duration, references = parse_markdown(content)
+        assert prompt == "Prompt"
+        assert urls == []
+        assert frames is None
+        assert duration is None
+        assert references == {}
+
+    def test_extra_and_unknown_children_skipped(self):
+        content = (
+            "Prompt\n"
+            "---\n"
+            "studio:\n"
+            "  marks:\n"
+            "    rating: 5\n"
+            "  timecode: 00:00:12\n"
+            "  future_key: [a, b, c]\n"
+            "---\n"
+        )
+        warnings: list[str] = []
+        prompt, urls, _, _, _ = parse_markdown(content, warn=warnings.append)
+        assert prompt == "Prompt"
+        assert urls == []
+        assert warnings == []
+
+    def test_malformed_yaml_inside_block_skipped_without_crash(self):
+        content = (
+            "Prompt\n"
+            "---\n"
+            "studio:\n"
+            "  marks:\n"
+            "    rating: 3\n"
+            "   colors: [unclosed\n"
+            "  : : :\n"
+            "---\n"
+        )
+        warnings: list[str] = []
+        prompt, urls, _, _, _ = parse_markdown(content, warn=warnings.append)
+        assert prompt == "Prompt"
+        assert urls == []
+        assert warnings == []
+
+    def test_duration_and_frames_around_block_unchanged(self):
+        content = "Prompt\nframes: 96\nduration: auto\n" + self._BLOCK
+        _, _, frames, duration, _ = parse_markdown(content)
+        assert frames == 96
+        assert duration == "auto"
+
+    def test_non_studio_trailing_fence_keeps_today_behaviour(self):
+        content = (
+            "Prompt\n"
+            "---\n"
+            "other_namespace:\n"
+            "  ref: ![a](https://example.com/a.jpg)\n"
+            "---\n"
+        )
+        _, urls, _, _, references = parse_markdown(content)
+        assert urls == ["https://example.com/a.jpg"]
+        assert references == {}
+
+    def test_block_without_prompt_raises(self):
+        with pytest.raises(ValueError, match="No prompt"):
+            parse_markdown(self._BLOCK)
+
+    def test_inline_studio_root_key_skipped(self):
+        content = "Prompt\n---\nstudio: {marks: {rating: 1}}\n---\n"
+        prompt, urls, _, _, _ = parse_markdown(content)
+        assert prompt == "Prompt"
+        assert urls == []
+
+    def test_read_markdown_strips_block(self, tmp_path):
+        markdown = tmp_path / "b.md"
+        markdown.write_text(
+            "Prompt\n"
+            "duration: 7\n"
+            "![](https://example.com/frame.jpg)\n"
+            "\n"
+            "---\n"
+            "studio:\n"
+            "  marks:\n"
+            "    rating: 2\n"
+            "---\n"
+        )
+        markdown_files = read_markdown(tmp_path, dry_run=True)
+        assert len(markdown_files) == 1
+        assert markdown_files[0]["duration"] == 7
+        assert markdown_files[0]["reference_urls"] == ["https://example.com/frame.jpg"]
+
+
 class TestValidateImageUrls:
     def test_split_valid_invalid(self):
         class FakeResp:

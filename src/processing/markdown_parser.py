@@ -12,9 +12,15 @@ HTML comments are ignored: anything between <!-- and --> (single-line,
 inline, or spanning multiple lines) is stripped before parsing, so
 commented-out prompts, images, or metadata never reach the payload.
 
+A trailing `---`-fenced YAML block whose root key is `studio:` is the IDE's
+cull-marks metadata. It is skipped whole — never a prompt, never a URL, never a
+warning — before any line is inspected. Detection is structural (fence + root
+key), so malformed YAML inside the block is skipped rather than raising.
+
 Format:
     Line 1: Text prompt
     Lines 2+: ![alt](URL), frames: N and/or duration: <value>
+    (optional) trailing `studio:` marks block
 """
 
 import re
@@ -45,7 +51,55 @@ _NON_HTTP_URL = re.compile(
 )
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
+_STUDIO_ROOT_RE = re.compile(r"^studio:(\s|$)")
+_FENCE_RE = re.compile(r"^-{3,}$")
+
 _PRIMARY_ALIASES = {"video", "image", "source", "media", "src", "input"}
+
+
+def _strip_trailing_studio_block(content: str) -> str:
+    """Drop a trailing `---`-fenced block whose root key is `studio:`.
+
+    The IDE appends cull marks as a namespaced trailing block, e.g.::
+
+        ---
+        studio:
+          marks:
+            rating: 3
+            colors: [green, red]
+            emoji: ["😀"]
+        ---
+
+    The block is metadata, never a prompt or a URL, so it is removed whole
+    (no warnings). Detection is structural — a closing fence on the last
+    non-blank line, a matching opening fence, and a `studio:` root key as the
+    first non-blank line inside — so malformed YAML is skipped, never parsed.
+    A trailing fence with any other root key, or content after the fence, is
+    left untouched (today's behaviour).
+    """
+    lines = content.split("\n")
+
+    end = len(lines) - 1
+    while end >= 0 and not lines[end].strip():
+        end -= 1
+    if end < 0 or not _FENCE_RE.match(lines[end].strip()):
+        return content
+
+    start = end - 1
+    while start >= 0 and not _FENCE_RE.match(lines[start].strip()):
+        start -= 1
+    if start < 0:
+        return content
+
+    root_key = ""
+    for line in lines[start + 1 : end]:
+        if line.strip():
+            root_key = line.strip()
+            break
+    if not _STUDIO_ROOT_RE.match(root_key):
+        return content
+
+    return "\n".join(lines[:start])
 
 
 def _strip_html_comments(
@@ -144,7 +198,9 @@ def parse_markdown(
     Raises:
         ValueError: If no prompt found.
     """
-    lines = _strip_html_comments(markdown_content, warn).split("\n")
+    lines = _strip_html_comments(
+        _strip_trailing_studio_block(markdown_content), warn
+    ).split("\n")
     prompt = ""
     urls: list[str] = []
     frames: int | None = None
